@@ -1,0 +1,10 @@
+{
+"author": "Variable",
+"description": "A simple skeleton system using group layers",
+"display_name": "Skeletor",
+"license": "MIT",
+"name": "Skeletor",
+"nodes": ["Main.tscn"],
+"supported_api_versions": [4],
+"version": "0.1"
+}
