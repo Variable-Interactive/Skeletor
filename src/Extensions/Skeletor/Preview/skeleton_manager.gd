@@ -8,6 +8,7 @@ var selected_gizmo: SkeletonGizmo
 var bones: Array[SkeletonGizmo]
 var current_frame: int = 0
 var prev_position: Vector2i
+var prev_layer_count: int = 0
 # The shader is located in pixelorama
 var blend_layer_shader = load("res://src/Shaders/BlendLayers.gdshader")
 var offset_shader := preload("res://src/Extensions/Skeletor/Shaders/OffsetPixels.gdshader")
@@ -84,6 +85,10 @@ func _ready() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	var project = api.project.current_project
+	api.signals.signal_cel_switched(cel_switched)
+	api.signals.signal_project_data_changed(project_data_changed)
+	## TODO: fix this later
+	api.signals.signal_current_cel_texture_changed(generate_pose)
 	if project.layers.size() > 0:
 		_update_frame_data()
 		if project.layers[-1].get_layer_type() == 1: # GroupLayer
@@ -101,23 +106,38 @@ func _ready() -> void:
 			):
 				pose_layer = project.layers[-1]
 				# generate initial pose
-				api.project.set_pixelcel_image(generate_pose(), current_frame, pose_layer.index)
-				project.layers[project.current_layer].locked = true
+				generate_pose()
 				return
 			api.project.add_new_layer(project.layers.size() - 1)
 		pose_layer = project.layers[-1]
 		pose_layer.name = "Pose Layer (DO NOT CHANGE)"
 
 		# generate initial pose
-		api.project.set_pixelcel_image(generate_pose(), current_frame, pose_layer.index)
-		project.layers[project.current_layer].locked = true
+		await get_tree().process_frame
+		generate_pose()
+
+
+func cel_switched():
+	if current_frame != api.project.current_project.current_frame:
+		queue_redraw()
+
+
+func project_data_changed(project):
+	if project == api.project.current_project:
+		if (
+			project.frames.size() != skeleton_info.keys().size()
+			or project.layers.size() != prev_layer_count
+		):
+			print("Redraw Required")
+			prev_layer_count = project.layers.size()
+			api.signals.signal_project_data_changed(project_data_changed, true)
+			queue_redraw()
+			generate_pose()
+			api.signals.signal_project_data_changed(project_data_changed)
 
 
 func _draw() -> void:
 	var project = api.project.current_project
-	if not "Pose Layer" in project.layers[project.current_layer].name:
-		return
-
 	_update_frame_data()
 	var group_ids: Array = skeleton_info[project.current_frame].keys()
 	bones.resize(group_ids.size())
@@ -135,11 +155,14 @@ func _draw() -> void:
 				bones[bone_idx] = bone
 			draw_gizmo(bones[bone_idx], global.camera.zoom)
 		else:
+			print("Deleted")
 			skeleton_info[project.current_frame].erase(instance_id)
 
 
 ## Generates a gizmo (for preview) based on the given data
 func draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
+	if not "Pose Layer" in api.project.current_project.layers[api.project.current_project.current_layer].name:
+		return
 	var color := Color.WHITE if (gizmo == selected_gizmo) else Color.GRAY
 	var width: float = (2.0 if (gizmo == selected_gizmo) else 1.0) / camera_zoom.x
 	var radius: float = 4.0 / camera_zoom.x
@@ -160,7 +183,10 @@ func draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 ## Old info is overwritten, not re-written
 func _update_frame_data():
 	var project = api.project.current_project
-	current_frame = project.current_frame
+	if project.current_frame != current_frame:
+		bones.clear()
+		selected_gizmo = null
+		current_frame = project.current_frame
 	if not current_frame in skeleton_info.keys():
 		skeleton_info[current_frame] = {}
 
@@ -241,10 +267,8 @@ func _input(_event: InputEvent) -> void:
 		queue_redraw()
 	else:
 		if selected_gizmo.modify_mode != SkeletonGizmo.NONE:
-			project.layers[project.current_layer].locked = false
-			api.project.set_pixelcel_image(generate_pose(), current_frame, pose_layer.index)
+			generate_pose()
 			selected_gizmo.modify_mode = SkeletonGizmo.NONE
-			project.layers[project.current_layer].locked = true
 
 
 
@@ -256,7 +280,7 @@ func apply_bone(gen, cel_id: int, cel_image: Image):
 
 
 ## Blends canvas layers into passed image starting from the origin position
-func generate_pose() -> Image:
+func generate_pose():
 	var project = api.project.current_project
 	var frame = project.frames[current_frame]
 	var previous_ordered_layers: Array[int] = project.ordered_layers
@@ -304,7 +328,9 @@ func generate_pose() -> Image:
 	image.blend_rect(blended, Rect2i(Vector2i.ZERO, project.size), Vector2i.ZERO)
 	# Re-order the layers again to ensure correct canvas drawing
 	project.ordered_layers = previous_ordered_layers
-	return image
+	project.layers[project.current_layer].locked = false
+	api.project.set_pixelcel_image(image, current_frame, pose_layer.index)
+	project.layers[project.current_layer].locked = true
 
 
 func set_layer_metadata_image(
@@ -328,3 +354,9 @@ func set_layer_metadata_image(
 		# Used for layers such as child layers of a group, so that the group layer itself can
 		# successfully be used as a clipping mask with the layer below it.
 		image.set_pixel(index, 3, Color(0.2, 0.0, 0.0, 0.0))
+
+
+func _exit_tree() -> void:
+	api.signals.signal_cel_switched(queue_redraw, true)
+	api.signals.signal_project_data_changed(project_data_changed, true)
+	api.signals.signal_current_cel_texture_changed(generate_pose, true)

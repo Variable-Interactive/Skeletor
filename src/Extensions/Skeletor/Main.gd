@@ -15,7 +15,6 @@ func _enter_tree() -> void:
 		"res://src/Extensions/Skeletor/Preview/skeleton_manager.tscn"
 	).instantiate()
 	api.general.get_canvas().add_child(skeleton_manager)
-	api.signals.signal_cel_switched(skeleton_manager.queue_redraw)
 
 
 func menu_item_clicked():
@@ -25,7 +24,6 @@ func menu_item_clicked():
 func _exit_tree() -> void:  # Extension is being uninstalled or disabled
 	# remember to remove things that you added using this extension
 	api.menu.remove_menu_item(api.menu.EDIT, item_id)
-	api.signals.signal_cel_switched(skeleton_manager.queue_redraw, true)
 	skeleton_manager.queue_free()
 
 
