@@ -13,14 +13,18 @@ var prev_layer_count: int = 0
 # The shader is located in pixelorama
 var blend_layer_shader = load("res://src/Shaders/BlendLayers.gdshader")
 var rotate_shader := load("res://src/Shaders/Effects/Rotation/cleanEdge.gdshader")
-var offset_shader := preload("res://src/Extensions/Skeletor/Shaders/OffsetPixels.gdshader")
 var pose_layer
 
 
 class SkeletonGizmo:
 	## This class is used/created to perform calculations
-	enum {NONE, OFFSET, ROTATE}
+	enum {NONE, OFFSET, ROTATE, SCALE}  ## I planned to add scaling too but decided to give up
 	const InteractionDistance = 20
+	const MIN_LENGTH: float = 20
+	const START_RADIUS: float = 6
+	const END_RADIUS: float = 4
+	const WIDTH: float = 2
+	const DESELECT_WIDTH: float = 1
 
 	signal update_property
 
@@ -49,9 +53,12 @@ class SkeletonGizmo:
 			update_property.emit(bone_name ,"bone_rotation", true, diff)
 	var gizmo_length: int:
 		set(value):
-			if value < 10:
-				value = 10
+			var diff = value - gizmo_length
+			if value < 20:
+				value = 20
+				diff = 0
 			gizmo_length = value
+			update_property.emit(bone_name ,"gizmo_length", true, diff)
 
 	# Properties determined using above variables
 	var end_point: Vector2:  ## This is relative to the gizmo_origin
@@ -71,7 +78,7 @@ class SkeletonGizmo:
 			"gizmo_rotate_origin": 0,
 			"start_point": Vector2.ZERO,
 			"bone_rotation": 0,
-			"gizmo_length": 20,
+			"gizmo_length": MIN_LENGTH,
 		}
 
 	func serialize(data: Dictionary) -> void:
@@ -83,15 +90,31 @@ class SkeletonGizmo:
 	func is_mouse_inside(mouse_position: Vector2, camera_zoom) -> bool:
 		var local_mouse_pos = rel_to_origin(mouse_position)
 		if (start_point).distance_to(local_mouse_pos) <= InteractionDistance / camera_zoom.x:
-				current_hover_mode = OFFSET
-				return true
-		if (
+			current_hover_mode = OFFSET
+			return true
+		elif (
 			(start_point + end_point).distance_to(local_mouse_pos)
 			<= InteractionDistance / camera_zoom.x
 		):
-				current_hover_mode = ROTATE
-				return true
+			current_hover_mode = SCALE
+			return true
+		elif is_close_to_segment(
+			rel_to_start_point(local_mouse_pos), WIDTH / camera_zoom.x, Vector2.ZERO, end_point
+		):
+			current_hover_mode = ROTATE
+			return true
+
 		current_hover_mode = NONE
+		return false
+
+	static func is_close_to_segment(
+		pos: Vector2, snapping_distance: float, s1: Vector2, s2: Vector2
+	) -> bool:
+		var test_line := (s2 - s1).rotated(deg_to_rad(90)).normalized()
+		var from_a := pos - test_line * snapping_distance
+		var from_b := pos + test_line * snapping_distance
+		if Geometry2D.segment_intersects_segment(from_a, from_b, s1, s2):
+			return true
 		return false
 
 	func rel_to_origin(pos: Vector2) -> Vector2:
@@ -236,22 +259,29 @@ func _input(_event: InputEvent) -> void:
 			prev_position = mouse_point
 		if selected_gizmo.modify_mode == SkeletonGizmo.NONE:
 			selected_gizmo.modify_mode = selected_gizmo.current_hover_mode
+		else:
+			selected_gizmo.current_hover_mode = selected_gizmo.modify_mode
 		var offset := mouse_point - prev_position
-		match selected_gizmo.modify_mode:
-			SkeletonGizmo.OFFSET:
-				if Input.is_key_pressed(KEY_CTRL):
-					selected_gizmo.gizmo_origin += offset.rotated(-selected_gizmo.bone_rotation)
-					selected_gizmo.start_point = Vector2i(selected_gizmo.rel_to_origin(mouse_point))
-				else:
-					selected_gizmo.start_point = selected_gizmo.rel_to_origin(mouse_point)
-			SkeletonGizmo.ROTATE:
-				var localized_mouse_norm: Vector2 = selected_gizmo.rel_to_start_point(mouse_point).normalized()
-				var localized_prev_mouse_norm: Vector2 = selected_gizmo.rel_to_start_point(prev_position).normalized()
-				var diff := localized_mouse_norm.angle_to(localized_prev_mouse_norm)
-				if Input.is_key_pressed(KEY_CTRL):
-					selected_gizmo.gizmo_rotate_origin -= diff
-				else:
-					selected_gizmo.bone_rotation -= diff
+		if selected_gizmo.modify_mode == SkeletonGizmo.OFFSET:
+			if Input.is_key_pressed(KEY_CTRL):
+				selected_gizmo.gizmo_origin += offset.rotated(-selected_gizmo.bone_rotation)
+				selected_gizmo.start_point = Vector2i(selected_gizmo.rel_to_origin(mouse_point))
+			else:
+				selected_gizmo.start_point = selected_gizmo.rel_to_origin(mouse_point)
+		elif (
+			selected_gizmo.modify_mode == SkeletonGizmo.ROTATE
+			or selected_gizmo.modify_mode == SkeletonGizmo.SCALE
+		):
+			var localized_mouse_norm: Vector2 = selected_gizmo.rel_to_start_point(mouse_point).normalized()
+			var localized_prev_mouse_norm: Vector2 = selected_gizmo.rel_to_start_point(prev_position).normalized()
+			var diff := localized_mouse_norm.angle_to(localized_prev_mouse_norm)
+			if Input.is_key_pressed(KEY_CTRL):
+				selected_gizmo.gizmo_rotate_origin -= diff
+			else:
+				selected_gizmo.bone_rotation -= diff
+			if selected_gizmo.modify_mode == SkeletonGizmo.SCALE:
+				@warning_ignore("narrowing_conversion")
+				selected_gizmo.gizmo_length = selected_gizmo.rel_to_start_point(mouse_point).length()
 
 		prev_position = mouse_point
 		generate_pose()
@@ -264,7 +294,6 @@ func _input(_event: InputEvent) -> void:
 
 ## Blends canvas layers into passed image starting from the origin position
 func generate_pose():
-	## TODO I noticed that sometimes the area of image gets cropped... (Investigate Why)
 	var project = api.project.current_project
 	if project.layers.find(pose_layer) == -1:
 		pose_layer = null
@@ -420,45 +449,82 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 		return
 	if !pose_layer:
 		pose_layer = api.project.current_project.layers[api.project.current_project.current_layer]
-	var color := Color.WHITE if (gizmo == selected_gizmo) else Color.GRAY
-	var width: float = (2.0 if (gizmo == selected_gizmo) else 1.0) / camera_zoom.x
-	var radius: float = 4.0 / camera_zoom.x
-	# Offset Gizmo
+	var width: float = (gizmo.WIDTH if (gizmo == selected_gizmo) else gizmo.DESELECT_WIDTH) / camera_zoom.x
+	var main_color := Color.WHITE if (gizmo == selected_gizmo) else Color.GRAY
+	var dim_color := Color(main_color.r, main_color.g, main_color.b, 0.8)
+
 	draw_set_transform(gizmo.gizmo_origin)
-	draw_circle(gizmo.start_point, radius, color, false, width)
-	draw_circle(gizmo.start_point + gizmo.end_point, radius * 2, color, false, width)
+	draw_circle(
+		gizmo.start_point,
+		gizmo.START_RADIUS / camera_zoom.x,
+		main_color if (gizmo.current_hover_mode == gizmo.OFFSET) else dim_color, false,
+		width
+	)
 	draw_line(
 		gizmo.start_point,
 		gizmo.start_point + gizmo.end_point,
-		color,
+		main_color if (gizmo.current_hover_mode == gizmo.ROTATE) else dim_color,
+		width if (gizmo.current_hover_mode == gizmo.ROTATE) else gizmo.DESELECT_WIDTH / camera_zoom.x
+	)
+	draw_circle(
+		gizmo.start_point + gizmo.end_point,
+		gizmo.END_RADIUS / camera_zoom.x,
+		main_color if (gizmo.current_hover_mode == gizmo.SCALE) else dim_color,
+		false,
 		width
 	)
+	#draw_polygon(gizmo.rel_to_global(gizmo.start_point))
+	## Show connection to parent
 	if gizmo.parent_bone_name in current_frame_bones.keys():
 		var parent_bone: SkeletonGizmo = current_frame_bones[gizmo.parent_bone_name]
 		draw_dashed_line(
 			gizmo.start_point,
 			gizmo.rel_to_origin(parent_bone.rel_to_global(parent_bone.start_point)),
-			color,
+			main_color,
 			width,
 		)
 
 func _apply_bone(gen, bone_name: String, cel_image: Image):
 	var bone_info: Dictionary = current_project_skeleton_info[current_frame].get(bone_name, {})
 
-	var offset_amount: Vector2i = bone_info.get("start_point", Vector2.ZERO)
-	var offset_params := {"offset": offset_amount, "wrap_around": false}
-	gen.generate_image(cel_image, offset_shader, offset_params, cel_image.get_size())
+	var pivot := Vector2i(bone_info.get("gizmo_origin", Vector2.ZERO))
+	var used_region := cel_image.get_used_rect()
+	if used_region.size == Vector2i.ZERO:
+		return
+	var used_region_with_p := used_region.merge(Rect2i(pivot, Vector2i.ONE))
+	var image_to_rotate = cel_image.get_region(used_region)
+	## Imprint on a square for rotation
+	var diagonal_length: int = ceilf((used_region_with_p.size).length() * 2)
+	if diagonal_length % 2 == 0:
+		diagonal_length += 1
+	var square_image = Image.create_empty(diagonal_length, diagonal_length, false, Image.FORMAT_RGBA8)
+	var s_offset: Vector2i = (Vector2(square_image.get_size()) / 2).ceil() + Vector2(used_region.position) - Vector2(pivot)
+	square_image.blit_rect(image_to_rotate, Rect2i(Vector2i.ZERO, image_to_rotate.get_size()), s_offset)
+	var added_rect = square_image.get_used_rect()
 
 	var transformation_matrix := Transform2D(bone_info.get("bone_rotation", 0), Vector2.ZERO)
-	var pivot = Vector2(bone_info.get("gizmo_origin", Vector2.ZERO)) + Vector2(offset_amount)
 	var rotate_params := {
 		"transformation_matrix": transformation_matrix,
-		"pivot": pivot / Vector2(cel_image.get_size()),
+		"pivot": Vector2(0.5, 0.5),
 		"ending_angle": bone_info.get("bone_rotation", 0),
 		"tolerance": 0,
 		"preview": false
 	}
-	gen.generate_image(cel_image, rotate_shader, rotate_params, cel_image.get_size())
+	gen.generate_image(square_image, rotate_shader, rotate_params, square_image.get_size())
+	square_image.save_png("res://test.png")
+
+	var offset_amount: Vector2i = bone_info.get("start_point", Vector2.ZERO)
+	cel_image.fill(Color(0, 0, 0, 0))
+	cel_image.blit_rect(
+		square_image,
+		square_image.get_used_rect(),
+		(
+			used_region.position
+			+ (square_image.get_used_rect().position - added_rect.position)
+			+ offset_amount
+		)
+	)
+
 
 func _set_layer_metadata_image(
 	layer, cel, image, index, include := true
