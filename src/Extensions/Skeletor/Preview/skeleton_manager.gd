@@ -12,7 +12,7 @@ var prev_position: Vector2
 var prev_layer_count: int = 0
 # The shader is located in pixelorama
 var blend_layer_shader = load("res://src/Shaders/BlendLayers.gdshader")
-var rotate_shader := load("res://src/Shaders/Effects/Rotation/NearestNeighbour.gdshader")
+var rotate_shader := load("res://src/Shaders/Effects/Rotation/cleanEdge.gdshader")
 var offset_shader := preload("res://src/Extensions/Skeletor/Shaders/OffsetPixels.gdshader")
 var pose_layer
 
@@ -230,17 +230,18 @@ func _input(_event: InputEvent) -> void:
 		return  # No gizmo matched our needs
 
 
-	# Check inputs
-	if prev_position == Vector2.INF:
-		prev_position = mouse_point
 	if Input.is_action_pressed("left_mouse"):
+		# Check inputs
+		if prev_position == Vector2.INF:
+			prev_position = mouse_point
 		if selected_gizmo.modify_mode == SkeletonGizmo.NONE:
 			selected_gizmo.modify_mode = selected_gizmo.current_hover_mode
 		var offset := mouse_point - prev_position
 		match selected_gizmo.modify_mode:
 			SkeletonGizmo.OFFSET:
 				if Input.is_key_pressed(KEY_CTRL):
-					selected_gizmo.gizmo_origin += offset
+					selected_gizmo.gizmo_origin += offset.rotated(-selected_gizmo.bone_rotation)
+					selected_gizmo.start_point = Vector2i(selected_gizmo.rel_to_origin(mouse_point))
 				else:
 					selected_gizmo.start_point = selected_gizmo.rel_to_origin(mouse_point)
 			SkeletonGizmo.ROTATE:
@@ -263,6 +264,7 @@ func _input(_event: InputEvent) -> void:
 
 ## Blends canvas layers into passed image starting from the origin position
 func generate_pose():
+	## TODO I noticed that sometimes the area of image gets cropped... (Investigate Why)
 	var project = api.project.current_project
 	if project.layers.find(pose_layer) == -1:
 		pose_layer = null
@@ -431,6 +433,14 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 		color,
 		width
 	)
+	if gizmo.parent_bone_name in current_frame_bones.keys():
+		var parent_bone: SkeletonGizmo = current_frame_bones[gizmo.parent_bone_name]
+		draw_dashed_line(
+			gizmo.start_point,
+			gizmo.rel_to_origin(parent_bone.rel_to_global(parent_bone.start_point)),
+			color,
+			width,
+		)
 
 func _apply_bone(gen, bone_name: String, cel_image: Image):
 	var bone_info: Dictionary = current_project_skeleton_info[current_frame].get(bone_name, {})
@@ -449,10 +459,6 @@ func _apply_bone(gen, bone_name: String, cel_image: Image):
 		"preview": false
 	}
 	gen.generate_image(cel_image, rotate_shader, rotate_params, cel_image.get_size())
-
-
-
-
 
 func _set_layer_metadata_image(
 	layer, cel, image, index, include := true
