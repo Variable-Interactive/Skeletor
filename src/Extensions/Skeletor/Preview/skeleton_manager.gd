@@ -3,17 +3,19 @@ extends Node2D
 var api: Node
 var global: Node
 var canvas: Node
-var current_project_skeleton_info: Dictionary
 var selected_gizmo: SkeletonGizmo
+var current_frame_data: Dictionary
 var current_frame_bones: Dictionary
 var current_frame: int = -1
 var current_frame_render: Image  # Use this to avoid altering image during undo/redo
-var prev_position: Vector2
 var prev_layer_count: int = 0
+var prev_frame_count: int = 0
+var prev_position := Vector2.INF  ## Previous position of the mouse (used in _input())
+var ignore_render: bool = false  ## used to check if we need a new render or not (used in _input())
 # The shader is located in pixelorama
 var blend_layer_shader = load("res://src/Shaders/BlendLayers.gdshader")
 var rotate_shader := load("res://src/Shaders/Effects/Rotation/cleanEdge.gdshader")
-var pose_layer
+var pose_layer  ## The layer in which a pose is rendered
 
 
 class SkeletonGizmo:
@@ -58,7 +60,7 @@ class SkeletonGizmo:
 				value = 20
 				diff = 0
 			gizmo_length = value
-			update_property.emit(bone_name ,"gizmo_length", true, diff)
+			update_property.emit(bone_name ,"gizmo_length", false, diff)
 
 	# Properties determined using above variables
 	var end_point: Vector2:  ## This is relative to the gizmo_origin
@@ -133,16 +135,19 @@ func update_bone_property(parent_name: String, property: String, should_propagat
 		return
 
 	# First we update data of parent bone
-	if not parent_name in current_project_skeleton_info[current_frame].keys():
+	current_frame_data = load_frame_info(project)
+	if not parent_name in current_frame_data.keys():
 		update_frame_data()
-		queue_redraw()
 	var parent: SkeletonGizmo = current_frame_bones[parent_name]
-	if parent.get(property) != current_project_skeleton_info[current_frame][parent_name][property]:
-		current_project_skeleton_info[current_frame][parent_name][property] = parent.get(property)
+	if parent.get(property) != current_frame_data[parent_name][property]:
+		current_frame_data[parent_name][property] = parent.get(property)
+		save_frame_info(project, current_frame_data)
 
-	if not should_propagate:
+	if not should_propagate or ignore_render:
+		# If ignore_render is true this probably beans we are in the process of modifying
+		# "Individual" properties of the bone and don't want them to propagate down the
+		# chain.
 		return
-
 	for layer in project.layers:  ## update first child (This will trigger a chain process)
 		if layer.get_layer_type() == 1 and layer.parent:  # GroupLayer
 			if layer.parent.name == parent_name:
@@ -169,12 +174,14 @@ func _ready() -> void:
 	await get_tree().process_frame
 
 	var project = api.project.current_project
+
 	manage_signals()
 	manage_project_changed(true)
 	global.project_about_to_switch.connect(manage_project_changed.bind(false))
+	global.camera.zoom_changed.connect(queue_redraw)
 	api.signals.signal_project_switched(manage_project_changed.bind(true))
 
-	generate_pose_layer(project)
+	#generate_pose_layer(project)
 
 
 ## Adds info about any new group cels that are added to the timeline.
@@ -186,26 +193,23 @@ func update_frame_data():
 		selected_gizmo = null
 		current_frame = project.current_frame
 
-		if not current_frame in current_project_skeleton_info.keys():
-			if current_frame - 1 in current_project_skeleton_info.keys():
-				current_project_skeleton_info[current_frame] = current_project_skeleton_info[current_frame - 1].duplicate(true)
-			else:
-				current_project_skeleton_info[current_frame] = {}
-			var frame_dict: Dictionary = current_project_skeleton_info[current_frame]
-			generate_heirarchy(frame_dict, project)
+		current_frame_data = load_frame_info(project)
+		if current_frame_data.is_empty() and current_frame != 0:
+			current_frame_data = load_frame_info(project, current_frame - 1).duplicate(true)
+			generate_heirarchy(current_frame_data)
 
 	if project.layers.size() != prev_layer_count:
 		prev_layer_count = project.layers.size()
-		var frame_dict: Dictionary = current_project_skeleton_info[current_frame]
-		generate_heirarchy(frame_dict, project)
+		generate_heirarchy(current_frame_data)
+	save_frame_info(project, current_frame_data)
 
 
-func generate_heirarchy(old_data: Dictionary, project):
+func generate_heirarchy(old_data: Dictionary):
 	var canon_layer_names = []
-	for layer in project.layers:
-		if !pose_layer and layer.get_layer_type() == 0:
+	for layer in api.project.current_project.layers:
+		if !pose_layer and layer.get_layer_type() == 0:  ## If user deleted a pose layer then find new one
 			if "Pose Layer" in layer.name:
-				pose_layer = layer
+				assign_pose_layer(layer)
 		if layer.get_layer_type() == 1:  # GroupLayer
 			var parent_name = ""
 			if layer.parent:
@@ -264,6 +268,7 @@ func _input(_event: InputEvent) -> void:
 		var offset := mouse_point - prev_position
 		if selected_gizmo.modify_mode == SkeletonGizmo.OFFSET:
 			if Input.is_key_pressed(KEY_CTRL):
+				ignore_render = true
 				selected_gizmo.gizmo_origin += offset.rotated(-selected_gizmo.bone_rotation)
 				selected_gizmo.start_point = Vector2i(selected_gizmo.rel_to_origin(mouse_point))
 			else:
@@ -276,6 +281,7 @@ func _input(_event: InputEvent) -> void:
 			var localized_prev_mouse_norm: Vector2 = selected_gizmo.rel_to_start_point(prev_position).normalized()
 			var diff := localized_mouse_norm.angle_to(localized_prev_mouse_norm)
 			if Input.is_key_pressed(KEY_CTRL):
+				ignore_render = true
 				selected_gizmo.gizmo_rotate_origin -= diff
 			else:
 				selected_gizmo.bone_rotation -= diff
@@ -284,16 +290,18 @@ func _input(_event: InputEvent) -> void:
 				selected_gizmo.gizmo_length = selected_gizmo.rel_to_start_point(mouse_point).length()
 
 		prev_position = mouse_point
-		generate_pose()
 	else:
 		if selected_gizmo.modify_mode != SkeletonGizmo.NONE:
+			generate_pose()
 			selected_gizmo.modify_mode = SkeletonGizmo.NONE
 			selected_gizmo = null
-	queue_redraw()
 
 
 ## Blends canvas layers into passed image starting from the origin position
 func generate_pose():
+	if ignore_render:
+		ignore_render = false
+		return
 	var project = api.project.current_project
 	if project.layers.find(pose_layer) == -1:
 		pose_layer = null
@@ -302,10 +310,10 @@ func generate_pose():
 		return
 	var image = Image.create_empty(project.size.x, project.size.x, false, Image.FORMAT_RGBA8)
 
-	if current_project_skeleton_info.get(0, {}).keys().size() == 0:  # No pose to generate
-		project.layers[project.current_layer].locked = false
+	if current_frame_data.is_empty():  # No pose to generate
+		project.layers[pose_layer.index].locked = false
 		_add_pose(project, image)
-		project.layers[project.current_layer].locked = true
+		project.layers[pose_layer.index].locked = true
 		return
 
 	var frame = project.frames[current_frame]
@@ -352,10 +360,10 @@ func generate_pose():
 	image.blend_rect(blended, Rect2i(Vector2.ZERO, project.size), Vector2.ZERO)
 	# Re-order the layers again to ensure correct canvas drawing
 	project.ordered_layers = previous_ordered_layers
-	project.layers[project.current_layer].locked = false
+	project.layers[pose_layer.index].locked = false
 	current_frame_render = image
 	_add_pose(project, image)
-	project.layers[project.current_layer].locked = true
+	project.layers[pose_layer.index].locked = true
 
 
 func _exit_tree() -> void:
@@ -395,15 +403,28 @@ func manage_project_changed(should_connect := false) -> void:
 		layer.effects_added_removed.disconnect(generate_pose)
 		layer.name_changed.disconnect(update_frame_data)
 
+
+func clean_data():
+	selected_gizmo = null
+	current_frame_render = null
+	current_frame_data.clear()
+	current_frame_bones.clear()
+	current_frame = -1
+	prev_layer_count = 0
+	prev_frame_count = 0
+	prev_position = Vector2.INF
+	ignore_render = false
+	pose_layer = null
+
+
 func texture_changed():
 	var project = api.project.current_project
-	if not "Pose Layer" in project.layers[project.current_layer].name:
+	if not is_pose_layer(project.layers[project.current_layer]):
 		generate_pose()
 
 func cel_switched():
-	queue_redraw()
 	var queue_generate := false
-	if not current_frame in current_project_skeleton_info.keys():
+	if current_frame_data.is_empty():
 		queue_generate = true
 	update_frame_data()
 	if queue_generate:
@@ -412,30 +433,30 @@ func cel_switched():
 func project_data_changed(project):
 	if project == api.project.current_project:
 		if (
-			project.frames.size() != current_project_skeleton_info.keys().size()
+			project.frames.size() != prev_frame_count
 			or project.layers.size() != prev_layer_count
 		):
 			update_frame_data()
+			prev_frame_count = project.frames.size()
 			prev_layer_count = project.layers.size()
 			manage_signals(true)  # Trmporarily disconnect signals
-			queue_redraw()
 			generate_pose()
 			manage_signals()  # Reconnect signals
 
 func _draw() -> void:
 	var project = api.project.current_project
-	if current_project_skeleton_info.is_empty():
+	if current_frame_data.is_empty():
 		return
-	var group_names: Array = current_project_skeleton_info[project.current_frame].keys()
+	var group_names: Array = current_frame_data.keys()
 	for bone_name: String in group_names:
 		if bone_name in current_frame_bones.keys():
 			var bone = current_frame_bones[bone_name]
-			bone.serialize(current_project_skeleton_info[project.current_frame][bone_name])
+			bone.serialize(current_frame_data[bone_name])
 			if not bone.update_property.is_connected(update_bone_property):
 				bone.update_property.connect(update_bone_property.bind(project))
 		else:
 			var bone = SkeletonGizmo.new()
-			bone.serialize(current_project_skeleton_info[project.current_frame][bone_name])
+			bone.serialize(current_frame_data[bone_name])
 			bone.update_property.connect(update_bone_property.bind(project))
 			current_frame_bones[bone_name] = bone
 		_draw_gizmo(current_frame_bones[bone_name], global.camera.zoom)
@@ -445,15 +466,22 @@ func _draw() -> void:
 
 ## Generates a gizmo (for preview) based on the given data
 func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
-	if not "Pose Layer" in api.project.current_project.layers[api.project.current_project.current_layer].name:
+	var project = api.project.current_project
+	if not is_pose_layer(project.layers[project.current_layer]):
 		return
-	if !pose_layer:
-		pose_layer = api.project.current_project.layers[api.project.current_project.current_layer]
+
 	var width: float = (gizmo.WIDTH if (gizmo == selected_gizmo) else gizmo.DESELECT_WIDTH) / camera_zoom.x
 	var main_color := Color.WHITE if (gizmo == selected_gizmo) else Color.GRAY
 	var dim_color := Color(main_color.r, main_color.g, main_color.b, 0.8)
 
 	draw_set_transform(gizmo.gizmo_origin)
+	if get_node_or_null("/root/Themes"):
+		var font = get_node_or_null("/root/Themes").get_font()
+		var text_position = Vector2(
+			gizmo.start_point.x,
+			gizmo.start_point.y - gizmo.START_RADIUS / camera_zoom.x - font.get_height()
+		)
+		draw_string(font, text_position, gizmo.bone_name)
 	draw_circle(
 		gizmo.start_point,
 		gizmo.START_RADIUS / camera_zoom.x,
@@ -485,15 +513,19 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 		)
 
 func _apply_bone(gen, bone_name: String, cel_image: Image):
-	var bone_info: Dictionary = current_project_skeleton_info[current_frame].get(bone_name, {})
-
+	var bone_info: Dictionary = current_frame_data.get(bone_name, {})
+	var offset_amount: Vector2i = bone_info.get("start_point", Vector2i.ZERO)
 	var pivot := Vector2i(bone_info.get("gizmo_origin", Vector2.ZERO))
+	if bone_info.get("bone_rotation", 0) == 0 and offset_amount == Vector2i.ZERO:
+		return
+
 	var used_region := cel_image.get_used_rect()
 	if used_region.size == Vector2i.ZERO:
 		return
 	var used_region_with_p := used_region.merge(Rect2i(pivot, Vector2i.ONE))
 	var image_to_rotate = cel_image.get_region(used_region)
 	## Imprint on a square for rotation
+	@warning_ignore("narrowing_conversion")
 	var diagonal_length: int = ceilf((used_region_with_p.size).length() * 2)
 	if diagonal_length % 2 == 0:
 		diagonal_length += 1
@@ -502,18 +534,17 @@ func _apply_bone(gen, bone_name: String, cel_image: Image):
 	square_image.blit_rect(image_to_rotate, Rect2i(Vector2i.ZERO, image_to_rotate.get_size()), s_offset)
 	var added_rect = square_image.get_used_rect()
 
-	var transformation_matrix := Transform2D(bone_info.get("bone_rotation", 0), Vector2.ZERO)
-	var rotate_params := {
-		"transformation_matrix": transformation_matrix,
-		"pivot": Vector2(0.5, 0.5),
-		"ending_angle": bone_info.get("bone_rotation", 0),
-		"tolerance": 0,
-		"preview": false
-	}
-	gen.generate_image(square_image, rotate_shader, rotate_params, square_image.get_size())
-	square_image.save_png("res://test.png")
+	if bone_info.get("bone_rotation", 0) != 0:
+		var transformation_matrix := Transform2D(bone_info.get("bone_rotation", 0), Vector2.ZERO)
+		var rotate_params := {
+			"transformation_matrix": transformation_matrix,
+			"pivot": Vector2(0.5, 0.5),
+			"ending_angle": bone_info.get("bone_rotation", 0),
+			"tolerance": 0,
+			"preview": false
+		}
+		gen.generate_image(square_image, rotate_shader, rotate_params, square_image.get_size())
 
-	var offset_amount: Vector2i = bone_info.get("start_point", Vector2.ZERO)
 	cel_image.fill(Color(0, 0, 0, 0))
 	cel_image.blit_rect(
 		square_image,
@@ -551,39 +582,51 @@ func _set_layer_metadata_image(
 func _add_pose(project, image: Image):
 	var cel_image: Image = project.frames[current_frame].cels[pose_layer.index].get_image()
 	cel_image.blit_rect(image, Rect2i(Vector2.ZERO, image.get_size()), Vector2.ZERO)
-	project.selected_cels = []
-	project.change_cel(current_frame, pose_layer.index)
+
+	if pose_layer.index == project.current_layer:
+		project.selected_cels = []
+		project.change_cel(current_frame, pose_layer.index)
 
 
 func _reverse_alteration():
+	if api.project.current_project.layers.find(pose_layer) == -1:
+		pose_layer = null
+		return
 	if current_frame_render:
+		manage_signals(true)
 		_add_pose(api.project.current_project, current_frame_render)
+		manage_signals()
 
 
-func generate_pose_layer(project):
-	if project.layers.size() > 0:
-		if project.layers[-1].get_layer_type() == 1: # GroupLayer
-			# There is a slight bug in the layer addition api (name gets assigned to wrong layer),
-			# this compensates for it
-			var group_name = project.layers[-1].name
-			api.project.add_new_layer(project.layers.size() - 1, group_name)
-			# select the GroupLayer and move it down
-			api.project.select_cels([[0, project.layers.size() - 2]])
-			global.animation_timeline.change_layer_order(true)
-		else:
-			if (
-				project.layers[-1].get_layer_type() == 0  # PixelLayer
-				and "Pose Layer" in project.layers[-1].name
-			):
-				pose_layer = project.layers[-1]
-				project_data_changed(project)
-				# generate initial pose
-				generate_pose()
-				return
-			api.project.add_new_layer(project.layers.size() - 1)
-		pose_layer = project.layers[-1]
-		pose_layer.name = "Pose Layer (DO NOT CHANGE)"
-		project_data_changed(project)
+func is_pose_layer(layer) -> bool:
+	return layer.get_meta("SkeletorPoseLayer", false)
 
-		# generate initial pose
-		generate_pose()
+
+func assign_pose_layer(layer):
+	layer.set_meta("SkeletorPoseLayer", true)
+	pose_layer = layer
+	if pose_layer.visibility_changed.is_connected(generate_pose):
+		pose_layer.visibility_changed.disconnect(generate_pose)
+
+
+func save_frame_info(project, data: Dictionary):
+	if project:
+		if current_frame >= 0 and current_frame < project.frames.size():
+			project.frames[current_frame].set_meta("SkeletorBone", var_to_str(data))
+			queue_redraw()
+
+
+func load_frame_info(project, frame_number:= current_frame) -> Dictionary:
+	if project:
+		if current_frame >= 0 and current_frame < project.frames.size():
+			var data = project.frames[frame_number].get_meta("SkeletorBone", {})
+			if typeof(data) == TYPE_STRING:
+				data = str_to_var(data)
+			if typeof(data) == TYPE_DICTIONARY:  ## Successful conversion
+				for bone in data.keys():
+					for bone_data in data[bone].keys():
+						if typeof(data[bone][bone_data]) == TYPE_STRING:
+							if str_to_var(data[bone][bone_data]):  ## Succesful sub-data conversion
+								data[bone][bone_data] = str_to_var(data[bone][bone_data])
+				return data
+	return {}
