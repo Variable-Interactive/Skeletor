@@ -7,22 +7,24 @@ var selected_gizmo: SkeletonGizmo
 var current_frame_data: Dictionary
 var current_frame_bones: Dictionary
 var current_frame: int = -1
-var current_frame_render: Image  # Use this to avoid altering image during undo/redo
 var prev_layer_count: int = 0
 var prev_frame_count: int = 0
+var current_frame_render: Image  # Use this to avoid altering image during undo/redo
 var prev_position := Vector2.INF  ## Previous position of the mouse (used in _input())
 var ignore_render: bool = false  ## used to check if we need a new render or not (used in _input())
+var queue_generate := false
 # The shader is located in pixelorama
 var blend_layer_shader = load("res://src/Shaders/BlendLayers.gdshader")
 var rotate_shader := load("res://src/Shaders/Effects/Rotation/cleanEdge.gdshader")
 var pose_layer  ## The layer in which a pose is rendered
 
+var reset_item_id: int
 
 class SkeletonGizmo:
 	## This class is used/created to perform calculations
 	enum {NONE, OFFSET, ROTATE, SCALE}  ## I planned to add scaling too but decided to give up
 	const InteractionDistance = 20
-	const MIN_LENGTH: float = 20
+	const MIN_LENGTH: float = 10
 	const START_RADIUS: float = 6
 	const END_RADIUS: float = 4
 	const WIDTH: float = 2
@@ -32,7 +34,10 @@ class SkeletonGizmo:
 
 	# Variables set using serialize()
 	var bone_name: String
-	var parent_bone_name: String
+	var parent_bone_name: String:
+		set(value):
+			parent_bone_name = value
+			update_property.emit(bone_name ,"parent_bone_name", false, "")
 	var gizmo_origin: Vector2:
 		set(value):
 			var diff = value - gizmo_origin
@@ -56,8 +61,8 @@ class SkeletonGizmo:
 	var gizmo_length: int:
 		set(value):
 			var diff = value - gizmo_length
-			if value < 20:
-				value = 20
+			if value < MIN_LENGTH:
+				value = MIN_LENGTH
 				diff = 0
 			gizmo_length = value
 			update_property.emit(bone_name ,"gizmo_length", false, diff)
@@ -128,6 +133,21 @@ class SkeletonGizmo:
 	func rel_to_global(pos: Vector2) -> Vector2:
 		return pos + gizmo_origin
 
+	func reset_bone(overrides := {}) -> Dictionary:
+		var reset_data = generate_empty_data(bone_name, parent_bone_name)
+		var connection_array := update_property.get_connections()
+		for connection: Dictionary in connection_array:
+			update_property.disconnect(connection["callable"])
+		for key in reset_data.keys():
+			if key in overrides.keys():
+				set(key, overrides[key])
+				reset_data[key] = overrides[key]
+			else:
+				set(key, reset_data[key])
+		for connection: Dictionary in connection_array:
+			update_property.connect(connection["callable"])
+		return reset_data
+
 
 func update_bone_property(parent_name: String, property: String, should_propagate: bool, diff, project):
 	## TODO: generally it should take skeleton info from project's metadata (fix this later)
@@ -141,15 +161,17 @@ func update_bone_property(parent_name: String, property: String, should_propagat
 	var parent: SkeletonGizmo = current_frame_bones[parent_name]
 	if parent.get(property) != current_frame_data[parent_name][property]:
 		current_frame_data[parent_name][property] = parent.get(property)
-		save_frame_info(project, current_frame_data)
+		save_frame_info(project)
 
-	if not should_propagate or ignore_render:
+	if !should_propagate or ignore_render:
 		# If ignore_render is true this probably beans we are in the process of modifying
 		# "Individual" properties of the bone and don't want them to propagate down the
 		# chain.
 		return
 	for layer in project.layers:  ## update first child (This will trigger a chain process)
 		if layer.get_layer_type() == 1 and layer.parent:  # GroupLayer
+			if current_frame_bones[layer.name].parent_bone_name != layer.parent.name:
+				current_frame_bones[layer.name].parent_bone_name = layer.parent.name
 			if layer.parent.name == parent_name:
 				if current_frame_bones.has(layer.name):
 					var bone: SkeletonGizmo = current_frame_bones[layer.name]
@@ -173,56 +195,74 @@ func _ready() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 
-	var project = api.project.current_project
-
 	manage_signals()
 	manage_project_changed(true)
 	global.project_about_to_switch.connect(manage_project_changed.bind(false))
 	global.camera.zoom_changed.connect(queue_redraw)
 	api.signals.signal_project_switched(manage_project_changed.bind(true))
 
-	#generate_pose_layer(project)
+	reset_item_id = api.menu.add_menu_item(api.menu.EDIT, "Auto Set Bones", self)
+
+
+func menu_item_clicked():
+	if current_frame_bones.is_empty():
+		update_frame_data()
+		queue_redraw()
+	var new_data = {}
+	for layer_idx: int in api.project.current_project.layers.size():
+		var bone_name: StringName = api.project.current_project.layers[layer_idx].name
+		if bone_name in current_frame_bones.keys():
+			new_data[bone_name] = current_frame_bones[bone_name].reset_bone(
+				{"gizmo_origin": Vector2(get_best_origin(layer_idx))}
+			)
+	current_frame_data = new_data
+	save_frame_info(api.project.current_project)
+	queue_redraw()
+	generate_pose()
 
 
 ## Adds info about any new group cels that are added to the timeline.
 func update_frame_data():
 	## TODO for some reason the data is not updating if group name changes
 	var project = api.project.current_project
-	if project.current_frame != current_frame:
+	if project.current_frame != current_frame:  # We moved to a different frame
 		current_frame_bones.clear()
 		selected_gizmo = null
+		current_frame_render = null
 		current_frame = project.current_frame
 
 		current_frame_data = load_frame_info(project)
 		if current_frame_data.is_empty() and current_frame != 0:
 			current_frame_data = load_frame_info(project, current_frame - 1).duplicate(true)
-			generate_heirarchy(current_frame_data)
 
 	if project.layers.size() != prev_layer_count:
 		prev_layer_count = project.layers.size()
 		generate_heirarchy(current_frame_data)
-	save_frame_info(project, current_frame_data)
+	save_frame_info(project)
 
 
 func generate_heirarchy(old_data: Dictionary):
-	var canon_layer_names = []
+	var invalid_layer_names := old_data.keys()
 	for layer in api.project.current_project.layers:
 		if !pose_layer and layer.get_layer_type() == 0:  ## If user deleted a pose layer then find new one
 			if "Pose Layer" in layer.name:
 				assign_pose_layer(layer)
-		if layer.get_layer_type() == 1:  # GroupLayer
+		elif layer.get_layer_type() == 1:  # GroupLayer
 			var parent_name = ""
 			if layer.parent:
 				parent_name = layer.parent.name
-			canon_layer_names.append(layer.name)
+			invalid_layer_names.erase(layer.name)
 			if not layer.name in old_data.keys():
 				old_data[layer.name] = SkeletonGizmo.generate_empty_data(layer.name, parent_name)
-		else:
-			if not layer.visibility_changed.is_connected(generate_pose):
+
+		## check connectivity of one of these signals and assume the result for others
+		if not layer.name_changed.is_connected(layer_name_changed):
+			if not layer == pose_layer and layer.get_layer_type() != 1:
 				layer.visibility_changed.connect(generate_pose)
-	for layer_name in old_data.keys():
-		if not layer_name in canon_layer_names:
-			old_data.erase(layer_name)
+			layer.effects_added_removed.connect(generate_pose)
+			layer.name_changed.connect(layer_name_changed.bind(layer, layer.name))
+	for layer_name in invalid_layer_names:
+		old_data.erase(layer_name)
 
 
 func _input(_event: InputEvent) -> void:
@@ -232,8 +272,8 @@ func _input(_event: InputEvent) -> void:
 			## TODO this line may be redundant (investigate later)
 			update_frame_data()  ## Checks for pose layer if present
 		return
-	if not project.layers[project.current_layer].locked:
-		project.layers[project.current_layer].locked = true
+	if not project.layers[pose_layer.index].locked:
+		project.layers[pose_layer.index].locked = true
 	var mouse_point: Vector2 = canvas.current_pixel
 
 	if selected_gizmo:
@@ -286,13 +326,13 @@ func _input(_event: InputEvent) -> void:
 			else:
 				selected_gizmo.bone_rotation -= diff
 			if selected_gizmo.modify_mode == SkeletonGizmo.SCALE:
-				@warning_ignore("narrowing_conversion")
 				selected_gizmo.gizmo_length = selected_gizmo.rel_to_start_point(mouse_point).length()
 
+		#generate_pose()  ## Uncomment me for live update
 		prev_position = mouse_point
 	else:
 		if selected_gizmo.modify_mode != SkeletonGizmo.NONE:
-			generate_pose()
+			generate_pose()  ## Uncomment me for only the final update
 			selected_gizmo.modify_mode = SkeletonGizmo.NONE
 			selected_gizmo = null
 
@@ -308,7 +348,7 @@ func generate_pose():
 		return
 	if not pose_layer.visible:
 		return
-	var image = Image.create_empty(project.size.x, project.size.x, false, Image.FORMAT_RGBA8)
+	var image = Image.create_empty(project.size.x, project.size.y, false, Image.FORMAT_RGBA8)
 
 	if current_frame_data.is_empty():  # No pose to generate
 		project.layers[pose_layer.index].locked = false
@@ -370,6 +410,7 @@ func _exit_tree() -> void:
 	current_frame_render = null
 	global.project_about_to_switch.disconnect(manage_project_changed)
 	api.signals.signal_project_switched(manage_project_changed, true)
+	api.menu.remove_menu_item(api.menu.EDIT, reset_item_id)
 	manage_signals(true)
 
 
@@ -388,12 +429,13 @@ func manage_project_changed(should_connect := false) -> void:
 	var undo_redo: UndoRedo = project.undo_redo
 	if should_connect:
 		## Add stuff which connects on project changed
+		clean_data()
 		undo_redo.version_changed.connect(_reverse_alteration)
 		for layer in api.project.current_project.layers:
 			if not layer == pose_layer and layer.get_layer_type() != 1:
 				layer.visibility_changed.connect(generate_pose)
 			layer.effects_added_removed.connect(generate_pose)
-			layer.name_changed.connect(update_frame_data)
+			layer.name_changed.connect(layer_name_changed.bind(layer, layer.name))
 		return
 	## Add stuff which disconnects on project changed
 	undo_redo.version_changed.disconnect(_reverse_alteration)
@@ -401,7 +443,7 @@ func manage_project_changed(should_connect := false) -> void:
 		if not layer == pose_layer and layer.get_layer_type() != 1:
 			layer.visibility_changed.disconnect(generate_pose)
 		layer.effects_added_removed.disconnect(generate_pose)
-		layer.name_changed.disconnect(update_frame_data)
+		layer.name_changed.disconnect(layer_name_changed)
 
 
 func clean_data():
@@ -420,15 +462,26 @@ func clean_data():
 func texture_changed():
 	var project = api.project.current_project
 	if not is_pose_layer(project.layers[project.current_layer]):
-		generate_pose()
+		current_frame_render == null
+		queue_generate = true
+
 
 func cel_switched():
-	var queue_generate := false
 	if current_frame_data.is_empty():
 		queue_generate = true
 	update_frame_data()
-	if queue_generate:
-		generate_pose()
+	if api.project.current_project.current_layer == pose_layer.index:
+		if queue_generate:
+			queue_generate = false
+			generate_pose()
+	var pose_layer_visible = (api.project.current_project.current_layer == pose_layer.index)
+	pose_layer.visible = pose_layer_visible
+	# Also disable the first root folder
+	for layer_idx in range(api.project.current_project.layers.size() - 1, -1, -1):
+		var layer = api.project.current_project.layers[layer_idx]
+		if layer.get_layer_type() == 1 and not layer.parent:
+			api.project.current_project.layers[layer_idx].visible = !pose_layer_visible
+
 
 func project_data_changed(project):
 	if project == api.project.current_project:
@@ -442,6 +495,25 @@ func project_data_changed(project):
 			manage_signals(true)  # Trmporarily disconnect signals
 			generate_pose()
 			manage_signals()  # Reconnect signals
+
+
+func layer_name_changed(layer, old_name: String) -> void:
+	if layer.get_layer_type() == 1:
+		if old_name in current_frame_data.keys():
+			var rename_bone: SkeletonGizmo = current_frame_bones[old_name]
+			rename_bone.bone_name = layer.name
+			var rename_data: Dictionary = current_frame_data[old_name]
+			current_frame_data.erase(old_name)
+			rename_data["bone_name"] = layer.name
+			if layer.parent:
+				rename_data["parent_bone_name"] = layer.parent.name
+			current_frame_data[layer.name] = rename_data
+		else: ## It's a new bone
+			current_frame_data[layer.name] = SkeletonGizmo.generate_empty_data(
+				layer.name, layer.parent.name
+			)
+		save_frame_info(api.project.current_project)
+
 
 func _draw() -> void:
 	var project = api.project.current_project
@@ -475,13 +547,6 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 	var dim_color := Color(main_color.r, main_color.g, main_color.b, 0.8)
 
 	draw_set_transform(gizmo.gizmo_origin)
-	if get_node_or_null("/root/Themes"):
-		var font = get_node_or_null("/root/Themes").get_font()
-		var text_position = Vector2(
-			gizmo.start_point.x,
-			gizmo.start_point.y - gizmo.START_RADIUS / camera_zoom.x - font.get_height()
-		)
-		draw_string(font, text_position, gizmo.bone_name)
 	draw_circle(
 		gizmo.start_point,
 		gizmo.START_RADIUS / camera_zoom.x,
@@ -501,7 +566,6 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 		false,
 		width
 	)
-	#draw_polygon(gizmo.rel_to_global(gizmo.start_point))
 	## Show connection to parent
 	if gizmo.parent_bone_name in current_frame_bones.keys():
 		var parent_bone: SkeletonGizmo = current_frame_bones[gizmo.parent_bone_name]
@@ -511,6 +575,10 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 			main_color,
 			width,
 		)
+	if get_node_or_null("/root/Themes"):
+		var font = get_node_or_null("/root/Themes").get_font()
+		draw_set_transform(gizmo.gizmo_origin + gizmo.start_point, rotation, Vector2.ONE / camera_zoom.x)
+		draw_string(font, Vector2.ZERO, gizmo.bone_name)
 
 func _apply_bone(gen, bone_name: String, cel_image: Image):
 	var bone_info: Dictionary = current_frame_data.get(bone_name, {})
@@ -524,9 +592,9 @@ func _apply_bone(gen, bone_name: String, cel_image: Image):
 		return
 	var used_region_with_p := used_region.merge(Rect2i(pivot, Vector2i.ONE))
 	var image_to_rotate = cel_image.get_region(used_region)
-	## Imprint on a square for rotation
-	@warning_ignore("narrowing_conversion")
-	var diagonal_length: int = ceilf((used_region_with_p.size).length() * 2)
+	## Imprint on a square for rotation (We are doing this so that the image doesn't get clipped as)
+	## a result of rotation.
+	var diagonal_length := ceili((used_region_with_p.size).length() * 2)
 	if diagonal_length % 2 == 0:
 		diagonal_length += 1
 	var square_image = Image.create_empty(diagonal_length, diagonal_length, false, Image.FORMAT_RGBA8)
@@ -534,6 +602,7 @@ func _apply_bone(gen, bone_name: String, cel_image: Image):
 	square_image.blit_rect(image_to_rotate, Rect2i(Vector2i.ZERO, image_to_rotate.get_size()), s_offset)
 	var added_rect = square_image.get_used_rect()
 
+	## Apply Rotation To this Image
 	if bone_info.get("bone_rotation", 0) != 0:
 		var transformation_matrix := Transform2D(bone_info.get("bone_rotation", 0), Vector2.ZERO)
 		var rotate_params := {
@@ -609,10 +678,27 @@ func assign_pose_layer(layer):
 		pose_layer.visibility_changed.disconnect(generate_pose)
 
 
-func save_frame_info(project, data: Dictionary):
+func get_best_origin(layer_idx: int) -> Vector2i:
+	var project = api.project.current_project
+	if current_frame >= 0 and current_frame < project.frames.size():
+		if layer_idx >= 0 and layer_idx < project.layers.size():
+			if project.layers[layer_idx].get_layer_type() == 1:
+				var used_rect := Rect2i()
+				for child_layer in project.layers[layer_idx].get_children(false):
+					if project.frames[current_frame].cels[child_layer.index].get_class_name() == "PixelCel":
+						var cel_rect = (
+								project.frames[current_frame].cels[child_layer.index].get_image()
+							).get_used_rect()
+						if cel_rect.has_area():
+							used_rect = used_rect.merge(cel_rect) if used_rect.has_area() else cel_rect
+				return used_rect.position + (used_rect.size / 2)
+	return Vector2i.ZERO
+
+
+func save_frame_info(project):
 	if project:
 		if current_frame >= 0 and current_frame < project.frames.size():
-			project.frames[current_frame].set_meta("SkeletorBone", var_to_str(data))
+			project.frames[current_frame].set_meta("SkeletorBone", var_to_str(current_frame_data))
 			queue_redraw()
 
 
