@@ -2,16 +2,17 @@ extends Node2D
 
 var api: Node
 var global: Node
-var canvas: Node
 var selected_gizmo: SkeletonGizmo
-var current_frame_data: Dictionary
+## A Dictionary of bone names as keys and their "Gizmo" as values.
 var current_frame_bones: Dictionary
+## A Dictionary with Bone names as keys and their "Data Dictionary" as values.
+var current_frame_data: Dictionary
 var current_frame: int = -1
 var prev_layer_count: int = 0
 var prev_frame_count: int = 0
 var current_frame_render: Image  # Use this to avoid altering image during undo/redo
 var prev_position := Vector2.INF  ## Previous position of the mouse (used in _input())
-var ignore_render: bool = false  ## used to check if we need a new render or not (used in _input())
+var ignore_render := false  ## used to check if we need a new render or not (used in _input())
 var queue_generate := false
 # The shader is located in pixelorama
 var blend_layer_shader = load("res://src/Shaders/BlendLayers.gdshader")
@@ -150,7 +151,6 @@ class SkeletonGizmo:
 
 
 func update_bone_property(parent_name: String, property: String, should_propagate: bool, diff, project):
-	## TODO: generally it should take skeleton info from project's metadata (fix this later)
 	if not is_instance_valid(project):
 		return
 
@@ -189,7 +189,6 @@ func update_bone_property(parent_name: String, property: String, should_propagat
 
 func _ready() -> void:
 	api = get_node_or_null("/root/ExtensionsApi")
-	canvas = get_parent()
 	global = api.general.get_global()
 
 	await get_tree().process_frame
@@ -223,18 +222,18 @@ func menu_item_clicked():
 
 ## Adds info about any new group cels that are added to the timeline.
 func update_frame_data():
-	## TODO for some reason the data is not updating if group name changes
 	var project = api.project.current_project
 	if project.current_frame != current_frame:  # We moved to a different frame
 		current_frame_bones.clear()
 		selected_gizmo = null
 		current_frame_render = null
 		current_frame = project.current_frame
-
 		current_frame_data = load_frame_info(project)
+		# The if the frame is new, and there is a skeleton for previous frame then
+		# copy it to this frame as well.
 		if current_frame_data.is_empty() and current_frame != 0:
 			current_frame_data = load_frame_info(project, current_frame - 1).duplicate(true)
-
+	# If the layer is newly added then we need to refresh the bone tree.
 	if project.layers.size() != prev_layer_count:
 		prev_layer_count = project.layers.size()
 		generate_heirarchy(current_frame_data)
@@ -274,7 +273,7 @@ func _input(_event: InputEvent) -> void:
 		return
 	if not project.layers[pose_layer.index].locked:
 		project.layers[pose_layer.index].locked = true
-	var mouse_point: Vector2 = canvas.current_pixel
+	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
 
 	if selected_gizmo:
 		if (
@@ -337,25 +336,26 @@ func _input(_event: InputEvent) -> void:
 			selected_gizmo = null
 
 
-## Blends canvas layers into passed image starting from the origin position
 func generate_pose():
-	if ignore_render:
+	# Do we even need to generate a pose?
+	if ignore_render:  # We had set to ignore generation in this cycle.
 		ignore_render = false
 		return
 	var project = api.project.current_project
-	if project.layers.find(pose_layer) == -1:
+	if project.layers.find(pose_layer) == -1:  # There is no Pose Layer to render to!!!
 		pose_layer = null
 		return
-	if not pose_layer.visible:
+	if not pose_layer.visible:  # Pose Layer is invisible (So generating is a waste of time)
 		return
 	var image = Image.create_empty(project.size.x, project.size.y, false, Image.FORMAT_RGBA8)
-
-	if current_frame_data.is_empty():  # No pose to generate
+	if current_frame_data.is_empty():  # No pose to generate (This is a kind of failsafe)
 		project.layers[pose_layer.index].locked = false
-		_add_pose(project, image)
+		_render_image(project, image)
 		project.layers[pose_layer.index].locked = true
 		return
 
+	# Start generating
+	# (Group visibility is completely ignored while the visibility of other layer types is respected)
 	var frame = project.frames[current_frame]
 	var previous_ordered_layers: Array[int] = project.ordered_layers
 	project.order_layers(current_frame)
@@ -402,7 +402,7 @@ func generate_pose():
 	project.ordered_layers = previous_ordered_layers
 	project.layers[pose_layer.index].locked = false
 	current_frame_render = image
-	_add_pose(project, image)
+	_render_image(project, image)
 	project.layers[pose_layer.index].locked = true
 
 
@@ -417,7 +417,6 @@ func _exit_tree() -> void:
 ## UPDATERS  (methods that are called through signals)
 
 func manage_signals(is_disconnecting := false):
-	## TODO: fix signal_current_cel_texture_changed later (currently it live updates)
 	api.signals.signal_cel_switched(cel_switched, is_disconnecting)
 	api.signals.signal_project_data_changed(project_data_changed, is_disconnecting)
 	api.signals.signal_current_cel_texture_changed(texture_changed, is_disconnecting)
@@ -460,8 +459,9 @@ func clean_data():
 
 
 func texture_changed():
-	var project = api.project.current_project
-	if not is_pose_layer(project.layers[project.current_layer]):
+	if not is_pose_layer(
+		api.project.current_project.layers[api.project.current_project.current_layer]
+	):
 		current_frame_render == null
 		queue_generate = true
 
@@ -470,12 +470,12 @@ func cel_switched():
 	if current_frame_data.is_empty():
 		queue_generate = true
 	update_frame_data()
+	var pose_layer_visible = (api.project.current_project.current_layer == pose_layer.index)
+	pose_layer.visible = pose_layer_visible
 	if api.project.current_project.current_layer == pose_layer.index:
 		if queue_generate:
 			queue_generate = false
 			generate_pose()
-	var pose_layer_visible = (api.project.current_project.current_layer == pose_layer.index)
-	pose_layer.visible = pose_layer_visible
 	# Also disable the first root folder
 	for layer_idx in range(api.project.current_project.layers.size() - 1, -1, -1):
 		var layer = api.project.current_project.layers[layer_idx]
@@ -648,7 +648,7 @@ func _set_layer_metadata_image(
 		# successfully be used as a clipping mask with the layer below it.
 		image.set_pixel(index, 3, Color(0.2, 0.0, 0.0, 0.0))
 
-func _add_pose(project, image: Image):
+func _render_image(project, image: Image):
 	var cel_image: Image = project.frames[current_frame].cels[pose_layer.index].get_image()
 	cel_image.blit_rect(image, Rect2i(Vector2.ZERO, image.get_size()), Vector2.ZERO)
 
@@ -663,7 +663,7 @@ func _reverse_alteration():
 		return
 	if current_frame_render:
 		manage_signals(true)
-		_add_pose(api.project.current_project, current_frame_render)
+		_render_image(api.project.current_project, current_frame_render)
 		manage_signals()
 
 
