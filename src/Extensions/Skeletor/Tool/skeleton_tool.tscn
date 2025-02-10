@@ -1,0 +1,38 @@
+[gd_scene load_steps=2 format=3 uid="uid://dmm1oev1lo72t"]
+
+[ext_resource type="Script" path="res://src/Extensions/Skeletor/Tool/skeleton_tool.gd" id="1_wwq80"]
+
+[node name="SkeletonTool" type="VBoxContainer"]
+offset_right = 177.0
+offset_bottom = 233.0
+script = ExtResource("1_wwq80")
+
+[node name="ColorRect" type="ColorRect" parent="."]
+custom_minimum_size = Vector2(0, 4)
+layout_mode = 2
+
+[node name="Label" type="Label" parent="."]
+layout_mode = 2
+theme_type_variation = &"HeaderSmall"
+horizontal_alignment = 1
+
+[node name="QuickSetBones" type="MenuButton" parent="."]
+layout_mode = 2
+text = "Quick Set Bones"
+flat = false
+
+[node name="HSeparator" type="HSeparator" parent="."]
+layout_mode = 2
+
+[node name="Label2" type="Label" parent="."]
+layout_mode = 2
+text = "Reset:"
+horizontal_alignment = 1
+
+[node name="RotationReset" type="MenuButton" parent="."]
+layout_mode = 2
+text = "Rotation"
+flat = false
+
+[connection signal="about_to_popup" from="QuickSetBones" to="." method="_on_quick_set_bones_menu_about_to_popup"]
+[connection signal="about_to_popup" from="RotationReset" to="." method="_on_rotation_reset_menu_about_to_popup"]

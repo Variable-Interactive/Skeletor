@@ -1,30 +1,25 @@
-extends Window
+extends Node
 
 var api: Node
-var item_id: int
 var skeleton_manager: Node2D
 
-@onready var rotation_algs: OptionButton = %RotationAlgs
 
 # This script acts as a setup for the extension
 func _enter_tree() -> void:
 	api = get_node_or_null("/root/ExtensionsApi")
-	#var menu_type = api.menu.EDIT
-	#item_id = api.menu.add_menu_item(menu_type, "Skeletor", self)
 	skeleton_manager = preload(
 		"res://src/Extensions/Skeletor/Preview/skeleton_manager.tscn"
 	).instantiate()
 	api.general.get_canvas().add_child(skeleton_manager)
 
-
-func menu_item_clicked():
-	popup_centered()
-
+	api.tools.add_tool(
+		"skeleton",
+		"Skeleton",
+		"res://src/Extensions/Skeletor/Tool/skeleton_tool.tscn",
+		[0],
+		"Hint",
+		)
 
 func _exit_tree() -> void:  # Extension is being uninstalled or disabled
-	#api.menu.remove_menu_item(api.menu.EDIT, item_id)
+	api.tools.remove_tool("skeleton")
 	skeleton_manager.queue_free()
-
-
-func _on_close_requested() -> void:
-	hide()

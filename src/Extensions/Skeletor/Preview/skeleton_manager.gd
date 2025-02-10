@@ -11,15 +11,15 @@ var current_frame: int = -1
 var prev_layer_count: int = 0
 var prev_frame_count: int = 0
 var current_frame_render: Image  # Use this to avoid altering image during undo/redo
-var prev_position := Vector2.INF  ## Previous position of the mouse (used in _input())
-var ignore_render := false  ## used to check if we need a new render or not (used in _input())
+var ignore_render_once := false  ## used to check if we need a new render or not (used in _input())
 var queue_generate := false
+var transformation_active := false
 # The shader is located in pixelorama
 var blend_layer_shader = load("res://src/Shaders/BlendLayers.gdshader")
 var rotate_shader := load("res://src/Shaders/Effects/Rotation/cleanEdge.gdshader")
 var pose_layer  ## The layer in which a pose is rendered
 
-var reset_item_id: int
+var active_skeleton_tools := Array()
 
 class SkeletonGizmo:
 	## This class is used/created to perform calculations
@@ -62,8 +62,8 @@ class SkeletonGizmo:
 	var gizmo_length: int:
 		set(value):
 			var diff = value - gizmo_length
-			if value < MIN_LENGTH:
-				value = MIN_LENGTH
+			if value < int(MIN_LENGTH):
+				value = int(MIN_LENGTH)
 				diff = 0
 			gizmo_length = value
 			update_property.emit(bone_name ,"gizmo_length", false, diff)
@@ -72,7 +72,6 @@ class SkeletonGizmo:
 	var end_point: Vector2:  ## This is relative to the gizmo_origin
 		get():
 			return Vector2(gizmo_length, 0).rotated(gizmo_rotate_origin + bone_rotation)
-	var current_hover_mode = NONE
 	var modify_mode := SkeletonGizmo.NONE
 
 	static func generate_empty_data(
@@ -95,25 +94,20 @@ class SkeletonGizmo:
 			if get(key) != data.get(key, reference_data[key]):
 				set(key, data.get(key, reference_data[key]))
 
-	func is_mouse_inside(mouse_position: Vector2, camera_zoom) -> bool:
+	func hover_mode(mouse_position: Vector2, camera_zoom) -> int:
 		var local_mouse_pos = rel_to_origin(mouse_position)
 		if (start_point).distance_to(local_mouse_pos) <= InteractionDistance / camera_zoom.x:
-			current_hover_mode = OFFSET
-			return true
+			return OFFSET
 		elif (
 			(start_point + end_point).distance_to(local_mouse_pos)
 			<= InteractionDistance / camera_zoom.x
 		):
-			current_hover_mode = SCALE
-			return true
+			return SCALE
 		elif is_close_to_segment(
 			rel_to_start_point(local_mouse_pos), WIDTH / camera_zoom.x, Vector2.ZERO, end_point
 		):
-			current_hover_mode = ROTATE
-			return true
-
-		current_hover_mode = NONE
-		return false
+			return ROTATE
+		return NONE
 
 	static func is_close_to_segment(
 		pos: Vector2, snapping_distance: float, s1: Vector2, s2: Vector2
@@ -163,8 +157,8 @@ func update_bone_property(parent_name: String, property: String, should_propagat
 		current_frame_data[parent_name][property] = parent.get(property)
 		save_frame_info(project)
 
-	if !should_propagate or ignore_render:
-		# If ignore_render is true this probably beans we are in the process of modifying
+	if !should_propagate or ignore_render_once:
+		# If ignore_render_once is true this probably beans we are in the process of modifying
 		# "Individual" properties of the bone and don't want them to propagate down the
 		# chain.
 		return
@@ -200,30 +194,15 @@ func _ready() -> void:
 	global.camera.zoom_changed.connect(queue_redraw)
 	api.signals.signal_project_switched(manage_project_changed.bind(true))
 
-	reset_item_id = api.menu.add_menu_item(api.menu.EDIT, "Auto Set Bones", self)
-
-
-func menu_item_clicked():
-	if current_frame_bones.is_empty():
-		update_frame_data()
-		queue_redraw()
-	var new_data = {}
-	for layer_idx: int in api.project.current_project.layers.size():
-		var bone_name: StringName = api.project.current_project.layers[layer_idx].name
-		if bone_name in current_frame_bones.keys():
-			new_data[bone_name] = current_frame_bones[bone_name].reset_bone(
-				{"gizmo_origin": Vector2(get_best_origin(layer_idx))}
-			)
-	current_frame_data = new_data
-	save_frame_info(api.project.current_project)
-	queue_redraw()
-	generate_pose()
-
 
 ## Adds info about any new group cels that are added to the timeline.
 func update_frame_data():
 	var project = api.project.current_project
-	if project.current_frame != current_frame:  # We moved to a different frame
+	if (
+		project.current_frame != current_frame  # We moved to a different frame
+		or project.frames.size() != prev_frame_count
+	):
+		prev_frame_count = project.frames.size()
 		current_frame_bones.clear()
 		selected_gizmo = null
 		current_frame_render = null
@@ -267,79 +246,15 @@ func generate_heirarchy(old_data: Dictionary):
 func _input(_event: InputEvent) -> void:
 	var project = api.project.current_project
 	if not pose_layer:
-		if Input.is_action_just_pressed("left_mouse"):
-			## TODO this line may be redundant (investigate later)
-			update_frame_data()  ## Checks for pose layer if present
 		return
 	if not project.layers[pose_layer.index].locked:
 		project.layers[pose_layer.index].locked = true
-	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
-
-	if selected_gizmo:
-		if (
-			!selected_gizmo.is_mouse_inside(mouse_point, global.camera.zoom)
-			and selected_gizmo.modify_mode == SkeletonGizmo.NONE
-		):
-			queue_redraw()
-			selected_gizmo = null
-	if !selected_gizmo:
-		for bone in current_frame_bones.values():
-			if (
-				bone.is_mouse_inside(mouse_point, global.camera.zoom)
-				or bone.modify_mode != SkeletonGizmo.NONE
-			):
-				selected_gizmo = bone
-				queue_redraw()
-				update_frame_data()
-				break
-		prev_position = Vector2.INF
-		return  # No gizmo matched our needs
-
-
-	if Input.is_action_pressed("left_mouse"):
-		# Check inputs
-		if prev_position == Vector2.INF:
-			prev_position = mouse_point
-		if selected_gizmo.modify_mode == SkeletonGizmo.NONE:
-			selected_gizmo.modify_mode = selected_gizmo.current_hover_mode
-		else:
-			selected_gizmo.current_hover_mode = selected_gizmo.modify_mode
-		var offset := mouse_point - prev_position
-		if selected_gizmo.modify_mode == SkeletonGizmo.OFFSET:
-			if Input.is_key_pressed(KEY_CTRL):
-				ignore_render = true
-				selected_gizmo.gizmo_origin += offset.rotated(-selected_gizmo.bone_rotation)
-				selected_gizmo.start_point = Vector2i(selected_gizmo.rel_to_origin(mouse_point))
-			else:
-				selected_gizmo.start_point = selected_gizmo.rel_to_origin(mouse_point)
-		elif (
-			selected_gizmo.modify_mode == SkeletonGizmo.ROTATE
-			or selected_gizmo.modify_mode == SkeletonGizmo.SCALE
-		):
-			var localized_mouse_norm: Vector2 = selected_gizmo.rel_to_start_point(mouse_point).normalized()
-			var localized_prev_mouse_norm: Vector2 = selected_gizmo.rel_to_start_point(prev_position).normalized()
-			var diff := localized_mouse_norm.angle_to(localized_prev_mouse_norm)
-			if Input.is_key_pressed(KEY_CTRL):
-				ignore_render = true
-				selected_gizmo.gizmo_rotate_origin -= diff
-				if selected_gizmo.modify_mode == SkeletonGizmo.SCALE:
-					selected_gizmo.gizmo_length = selected_gizmo.rel_to_start_point(mouse_point).length()
-			else:
-				selected_gizmo.bone_rotation -= diff
-
-		#generate_pose()  ## Uncomment me for live update
-		prev_position = mouse_point
-	else:
-		if selected_gizmo.modify_mode != SkeletonGizmo.NONE:
-			generate_pose()  ## Uncomment me for only the final update
-			selected_gizmo.modify_mode = SkeletonGizmo.NONE
-			selected_gizmo = null
 
 
 func generate_pose():
 	# Do we even need to generate a pose?
-	if ignore_render:  # We had set to ignore generation in this cycle.
-		ignore_render = false
+	if ignore_render_once:  # We had set to ignore generation in this cycle.
+		ignore_render_once = false
 		return
 	var project = api.project.current_project
 	if project.layers.find(pose_layer) == -1:  # There is no Pose Layer to render to!!!
@@ -410,7 +325,6 @@ func _exit_tree() -> void:
 	current_frame_render = null
 	global.project_about_to_switch.disconnect(manage_project_changed)
 	api.signals.signal_project_switched(manage_project_changed, true)
-	api.menu.remove_menu_item(api.menu.EDIT, reset_item_id)
 	manage_signals(true)
 
 
@@ -453,8 +367,7 @@ func clean_data():
 	current_frame = -1
 	prev_layer_count = 0
 	prev_frame_count = 0
-	prev_position = Vector2.INF
-	ignore_render = false
+	ignore_render_once = false
 	pose_layer = null
 
 
@@ -462,7 +375,7 @@ func texture_changed():
 	if not is_pose_layer(
 		api.project.current_project.layers[api.project.current_project.current_layer]
 	):
-		current_frame_render == null
+		current_frame_render = null
 		queue_generate = true
 
 
@@ -470,17 +383,9 @@ func cel_switched():
 	if current_frame_data.is_empty():
 		queue_generate = true
 	update_frame_data()
-	var pose_layer_visible = (api.project.current_project.current_layer == pose_layer.index)
-	pose_layer.visible = pose_layer_visible
-	if api.project.current_project.current_layer == pose_layer.index:
-		if queue_generate:
-			queue_generate = false
-			generate_pose()
-	# Also disable the first root folder
-	for layer_idx in range(api.project.current_project.layers.size() - 1, -1, -1):
-		var layer = api.project.current_project.layers[layer_idx]
-		if layer.get_layer_type() == 1 and not layer.parent:
-			api.project.current_project.layers[layer_idx].visible = !pose_layer_visible
+	if !pose_layer:  ## Do nothing more if pose layer doesn't exist
+		return
+	manage_layer_visibility()
 
 
 func project_data_changed(project):
@@ -490,8 +395,6 @@ func project_data_changed(project):
 			or project.layers.size() != prev_layer_count
 		):
 			update_frame_data()
-			prev_frame_count = project.frames.size()
-			prev_layer_count = project.layers.size()
 			manage_signals(true)  # Trmporarily disconnect signals
 			generate_pose()
 			manage_signals()  # Reconnect signals
@@ -516,9 +419,11 @@ func layer_name_changed(layer, old_name: String) -> void:
 
 
 func _draw() -> void:
-	var project = api.project.current_project
 	if current_frame_data.is_empty():
 		return
+	if active_skeleton_tools.is_empty():
+		return
+	var project = api.project.current_project
 	var group_names: Array = current_frame_data.keys()
 	for bone_name: String in group_names:
 		if bone_name in current_frame_bones.keys():
@@ -541,28 +446,28 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 	var project = api.project.current_project
 	if not is_pose_layer(project.layers[project.current_layer]):
 		return
-
 	var width: float = (gizmo.WIDTH if (gizmo == selected_gizmo) else gizmo.DESELECT_WIDTH) / camera_zoom.x
 	var main_color := Color.WHITE if (gizmo == selected_gizmo) else Color.GRAY
 	var dim_color := Color(main_color.r, main_color.g, main_color.b, 0.8)
-
+	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
+	var hover_mode = max(gizmo.modify_mode, gizmo.hover_mode(mouse_point, camera_zoom))
 	draw_set_transform(gizmo.gizmo_origin)
 	draw_circle(
 		gizmo.start_point,
 		gizmo.START_RADIUS / camera_zoom.x,
-		main_color if (gizmo.current_hover_mode == gizmo.OFFSET) else dim_color, false,
+		main_color if (hover_mode == gizmo.OFFSET) else dim_color, false,
 		width
 	)
 	draw_line(
 		gizmo.start_point,
 		gizmo.start_point + gizmo.end_point,
-		main_color if (gizmo.current_hover_mode == gizmo.ROTATE) else dim_color,
-		width if (gizmo.current_hover_mode == gizmo.ROTATE) else gizmo.DESELECT_WIDTH / camera_zoom.x
+		main_color if (hover_mode == gizmo.ROTATE) else dim_color,
+		width if (hover_mode == gizmo.ROTATE) else gizmo.DESELECT_WIDTH / camera_zoom.x
 	)
 	draw_circle(
 		gizmo.start_point + gizmo.end_point,
 		gizmo.END_RADIUS / camera_zoom.x,
-		main_color if (gizmo.current_hover_mode == gizmo.SCALE) else dim_color,
+		main_color if (hover_mode == gizmo.SCALE) else dim_color,
 		false,
 		width
 	)
@@ -579,6 +484,7 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 		var font = get_node_or_null("/root/Themes").get_font()
 		draw_set_transform(gizmo.gizmo_origin + gizmo.start_point, rotation, Vector2.ONE / camera_zoom.x)
 		draw_string(font, Vector2.ZERO, gizmo.bone_name)
+
 
 func _apply_bone(gen, bone_name: String, cel_image: Image):
 	var bone_info: Dictionary = current_frame_data.get(bone_name, {})
@@ -613,7 +519,6 @@ func _apply_bone(gen, bone_name: String, cel_image: Image):
 			"preview": false
 		}
 		gen.generate_image(square_image, rotate_shader, rotate_params, square_image.get_size())
-
 	cel_image.fill(Color(0, 0, 0, 0))
 	cel_image.blit_rect(
 		square_image,
@@ -648,6 +553,7 @@ func _set_layer_metadata_image(
 		# successfully be used as a clipping mask with the layer below it.
 		image.set_pixel(index, 3, Color(0.2, 0.0, 0.0, 0.0))
 
+
 func _render_image(project, image: Image):
 	var cel_image: Image = project.frames[current_frame].cels[pose_layer.index].get_image()
 	cel_image.blit_rect(image, Rect2i(Vector2.ZERO, image.get_size()), Vector2.ZERO)
@@ -671,10 +577,25 @@ func is_pose_layer(layer) -> bool:
 	return layer.get_meta("SkeletorPoseLayer", false)
 
 
+func manage_layer_visibility():
+	var pose_layer_visible = (api.project.current_project.current_layer == pose_layer.index)
+	pose_layer.visible = pose_layer_visible
+	if api.project.current_project.current_layer == pose_layer.index:
+		if queue_generate:
+			queue_generate = false
+			generate_pose()
+	# Also disable the first root folder
+	for layer_idx in range(api.project.current_project.layers.size() - 1, -1, -1):
+		var layer = api.project.current_project.layers[layer_idx]
+		if layer.get_layer_type() == 1 and not layer.parent:
+			api.project.current_project.layers[layer_idx].visible = !pose_layer_visible
+
+
 func assign_pose_layer(layer):
 	layer.set_meta("SkeletorPoseLayer", true)
 	pose_layer = layer
 	if pose_layer.visibility_changed.is_connected(generate_pose):
+		#manage_layer_visibility()
 		pose_layer.visibility_changed.disconnect(generate_pose)
 
 
@@ -716,3 +637,7 @@ func load_frame_info(project, frame_number:= current_frame) -> Dictionary:
 								data[bone][bone_data] = str_to_var(data[bone][bone_data])
 				return data
 	return {}
+
+
+func announce_removal(tool_node):
+	active_skeleton_tools.erase(tool_node)
