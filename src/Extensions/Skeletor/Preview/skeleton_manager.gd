@@ -322,10 +322,10 @@ func _input(_event: InputEvent) -> void:
 			if Input.is_key_pressed(KEY_CTRL):
 				ignore_render = true
 				selected_gizmo.gizmo_rotate_origin -= diff
+				if selected_gizmo.modify_mode == SkeletonGizmo.SCALE:
+					selected_gizmo.gizmo_length = selected_gizmo.rel_to_start_point(mouse_point).length()
 			else:
 				selected_gizmo.bone_rotation -= diff
-			if selected_gizmo.modify_mode == SkeletonGizmo.SCALE:
-				selected_gizmo.gizmo_length = selected_gizmo.rel_to_start_point(mouse_point).length()
 
 		#generate_pose()  ## Uncomment me for live update
 		prev_position = mouse_point
