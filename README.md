@@ -1,4 +1,6 @@
 ## Skeletor
+[Demo Project](https://github.com/user-attachments/files/18738751/Extract.me.zip)
+
 This is a pixelorama extension that add basic Skeletal animation capabilities to the software.
 To use it:
 1. There should be a Pixel Layer named "Pose Layer" in the project (It can be renamed later, once the extension has detected it). This Layer will be used to render the final "pose" of the frame.
