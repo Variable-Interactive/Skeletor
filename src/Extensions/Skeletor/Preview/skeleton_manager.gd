@@ -432,19 +432,23 @@ func layer_name_changed(layer, old_name: String) -> void:
 			update_frame_data()
 			return
 	elif layer.get_layer_type() == 1:
-		if old_name in current_frame_data.keys():
-			var rename_bone: SkeletonGizmo = current_frame_bones[old_name]
-			rename_bone.bone_name = layer.name
-			var rename_data: Dictionary = current_frame_data[old_name]
-			current_frame_data.erase(old_name)
-			rename_data["bone_name"] = layer.name
-			if layer.parent:
-				rename_data["parent_bone_name"] = layer.parent.name
-			current_frame_data[layer.name] = rename_data
-		else: ## It's a new bone
-			current_frame_data[layer.name] = SkeletonGizmo.generate_empty_data(
-				layer.name, layer.parent.name
-			)
+		if is_sane(api.project.current_project):
+			if old_name in current_frame_data.keys():
+				var rename_bone: SkeletonGizmo = current_frame_bones[old_name]
+				rename_bone.bone_name = layer.name
+				var rename_data: Dictionary = current_frame_data[old_name]
+				current_frame_data.erase(old_name)
+				rename_data["bone_name"] = layer.name
+				if layer.parent:
+					rename_data["parent_bone_name"] = layer.parent.name
+				current_frame_data[layer.name] = rename_data
+			else: ## It's a new bone
+				var layer_parent_name = ""
+				if layer.parent:
+					layer_parent_name = layer.parent.name
+				current_frame_data[layer.name] = SkeletonGizmo.generate_empty_data(
+					layer.name, layer_parent_name
+				)
 		save_frame_info(api.project.current_project)
 
 
