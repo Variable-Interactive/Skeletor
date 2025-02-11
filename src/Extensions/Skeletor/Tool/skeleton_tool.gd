@@ -59,8 +59,8 @@ func set_config(config: Dictionary) -> void:
 
 
 func update_config() -> void:
-	$LiveUpdateCheckbox.button_pressed = _live_update
-	$IncludeChildrenCheckbox.button_pressed = _include_children
+	%LiveUpdateCheckbox.button_pressed = _live_update
+	%IncludeChildrenCheckbox.button_pressed = _include_children
 
 
 func save_config() -> void:

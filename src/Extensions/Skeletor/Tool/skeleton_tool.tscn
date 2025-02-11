@@ -33,6 +33,7 @@ layout_mode = 2
 columns = 2
 
 [node name="LiveUpdateCheckbox" type="CheckBox" parent="GridContainer"]
+unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "(Enabled) The update happens continuously
 as the bone is modified
@@ -49,6 +50,7 @@ mouse_filter = 1
 text = "Live Update (slower)"
 
 [node name="IncludeChildrenCheckbox" type="CheckBox" parent="GridContainer"]
+unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Transformations applied through the buttons below
 will also apply on the children."

@@ -1,10 +1,10 @@
 {
 "author": "Variable",
-"description": "A simple skeleton system using group layers",
+"description": "A basic skeleton system using group layers as bones.",
 "display_name": "Skeletor",
 "license": "MIT",
 "name": "Skeletor",
 "nodes": ["Main.tscn"],
-"supported_api_versions": [4],
+"supported_api_versions": [5],
 "version": "0.1"
 }

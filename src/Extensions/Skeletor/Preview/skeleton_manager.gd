@@ -252,7 +252,7 @@ func generate_heirarchy(old_data: Dictionary) -> void:
 			if layer != pose_layer:
 				if layer.get_layer_type() != 1:
 					layer.visibility_changed.connect(generate_pose)
-				layer.effects_added_removed.connect(generate_pose)
+				#layer.effects_added_removed.connect(generate_pose)  ## TODO: uncomment for Pixelorama v1.1
 				layer.name_changed.connect(layer_name_changed.bind(layer, layer.name))
 	for layer_name in invalid_layer_names:
 		old_data.erase(layer_name)
@@ -305,7 +305,8 @@ func generate_pose() -> void:
 		var include := false if (!layer.visible and layer.get_layer_type() != 1) else true
 		var cel = frame.cels[ordered_index]
 		var cel_image: Image
-		if layer.is_blender():
+		#if layer.is_blender():  ## TODO: uncomment for Pixelorama v1.1
+		if layer.get_layer_type() == 1 and layer.blend_mode != -2:  # (PASS_THROUGH)
 			cel_image = layer.blend_children(frame)
 		else:
 			cel_image = layer.display_effects(cel)
@@ -366,7 +367,7 @@ func manage_project_changed(should_connect := false) -> void:
 			if layer != pose_layer:
 				if layer.get_layer_type() != 1:
 					layer.visibility_changed.connect(generate_pose)
-				layer.effects_added_removed.connect(generate_pose)
+				#layer.effects_added_removed.connect(generate_pose)  ## TODO: uncomment for Pixelorama v1.1
 				layer.name_changed.connect(layer_name_changed.bind(layer, layer.name))
 		return
 	## Add stuff which disconnects on project changed
@@ -374,7 +375,7 @@ func manage_project_changed(should_connect := false) -> void:
 		if layer != pose_layer:
 			if layer.get_layer_type() != 1:
 				layer.visibility_changed.disconnect(generate_pose)
-			layer.effects_added_removed.disconnect(generate_pose)
+			#layer.effects_added_removed.disconnect(generate_pose)  ## TODO: uncomment for Pixelorama v1.1
 			layer.name_changed.disconnect(layer_name_changed)
 
 
