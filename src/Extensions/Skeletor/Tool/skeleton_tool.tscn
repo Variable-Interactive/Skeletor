@@ -14,25 +14,97 @@ layout_mode = 2
 [node name="Label" type="Label" parent="."]
 layout_mode = 2
 theme_type_variation = &"HeaderSmall"
+text = "Tool Name"
 horizontal_alignment = 1
+
+[node name="Section3" type="HBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Section3"]
+layout_mode = 2
+text = "General"
+
+[node name="HSeparator" type="HSeparator" parent="Section3"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="GridContainer" type="GridContainer" parent="."]
+layout_mode = 2
+columns = 2
+
+[node name="LiveUpdateCheckbox" type="CheckBox" parent="GridContainer"]
+layout_mode = 2
+tooltip_text = "(Enabled) The update happens continuously
+as the bone is modified
+
+(Disabled) The update only happens at the end of modification."
+
+[node name="Label" type="Label" parent="GridContainer"]
+layout_mode = 2
+tooltip_text = "(Enabled) The update happens continuously
+as the bone is modified
+
+(Disabled) The update only happens at the end of modification."
+mouse_filter = 1
+text = "Live Update (slower)"
+
+[node name="IncludeChildrenCheckbox" type="CheckBox" parent="GridContainer"]
+layout_mode = 2
+tooltip_text = "Transformations applied through the buttons below
+will also apply on the children."
+
+[node name="Label2" type="Label" parent="GridContainer"]
+layout_mode = 2
+tooltip_text = "Transformations applied through the buttons below
+will also apply on the children."
+mouse_filter = 1
+text = "Include bone children"
+
+[node name="Section2" type="HBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Section2"]
+layout_mode = 2
+text = "Skeleton"
+
+[node name="HSeparator" type="HSeparator" parent="Section2"]
+layout_mode = 2
+size_flags_horizontal = 3
 
 [node name="QuickSetBones" type="MenuButton" parent="."]
 layout_mode = 2
 text = "Quick Set Bones"
 flat = false
 
-[node name="HSeparator" type="HSeparator" parent="."]
+[node name="CopyPoseFrom" type="MenuButton" parent="."]
+layout_mode = 2
+text = "Copy Pose From"
+flat = false
+
+[node name="Section" type="HBoxContainer" parent="."]
 layout_mode = 2
 
-[node name="Label2" type="Label" parent="."]
+[node name="Label" type="Label" parent="Section"]
 layout_mode = 2
-text = "Reset:"
-horizontal_alignment = 1
+text = "Reset"
+
+[node name="HSeparator" type="HSeparator" parent="Section"]
+layout_mode = 2
+size_flags_horizontal = 3
 
 [node name="RotationReset" type="MenuButton" parent="."]
 layout_mode = 2
-text = "Rotation"
+text = "Bone Rotation"
 flat = false
 
+[node name="PositionReset" type="MenuButton" parent="."]
+layout_mode = 2
+text = "Bone Position"
+flat = false
+
+[connection signal="toggled" from="GridContainer/LiveUpdateCheckbox" to="." method="_on_live_update_pressed"]
+[connection signal="toggled" from="GridContainer/IncludeChildrenCheckbox" to="." method="_on_include_children_checkbox_toggled"]
 [connection signal="about_to_popup" from="QuickSetBones" to="." method="_on_quick_set_bones_menu_about_to_popup"]
+[connection signal="about_to_popup" from="CopyPoseFrom" to="." method="_on_copy_pose_from_about_to_popup"]
 [connection signal="about_to_popup" from="RotationReset" to="." method="_on_rotation_reset_menu_about_to_popup"]
+[connection signal="about_to_popup" from="PositionReset" to="." method="_on_position_reset_menu_about_to_popup"]

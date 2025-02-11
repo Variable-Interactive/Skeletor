@@ -1,16 +1,24 @@
 extends VBoxContainer
 
 enum {NONE, OFFSET, ROTATE, SCALE}  ## same as the one in SkeletonGizmo class
-
+const MAX_GENERATION_FREQ = 5
 var api: Node
 var tool_slot
+var kname: String
 var cursor_text := ""
 var skeleton_preview: Node2D
 var prev_mouse_position := Vector2.INF
 var is_transforming := false
-
-@onready var rotation_reset_menu: MenuButton = $RotationReset
+var _include_children := false
+var _live_update := false
+var generation_threshold: float = 5
+var live_thread := Thread.new()
 @onready var quick_set_bones_menu: MenuButton = $QuickSetBones
+@onready var rotation_reset_menu: MenuButton = $RotationReset
+@onready var position_reset_menu: MenuButton = $PositionReset
+@onready var copy_pose_from: MenuButton = $CopyPoseFrom
+var _generation_count: float = 0
+var _interval_count: int = 0
 
 
 func _ready() -> void:
@@ -25,17 +33,48 @@ func _ready() -> void:
 		else:
 			$ColorRect.color = api.general.get_global().right_tool_color
 		$Label.text = "Skeleton Options"
-	rotation_reset_menu.get_popup().id_pressed.connect(reset_bone_angle)
 	quick_set_bones_menu.get_popup().id_pressed.connect(quick_set_bones)
+	rotation_reset_menu.get_popup().id_pressed.connect(reset_bone_angle)
+	position_reset_menu.get_popup().id_pressed.connect(reset_bone_position)
+	kname = name.replace(" ", "_").to_lower()
+	load_config()
+
+
+func load_config() -> void:
+	var value = api.general.get_global().config_cache.get_value(tool_slot.kname, kname, {})
+	set_config(value)
+	update_config()
+
+
+func get_config() -> Dictionary:
+	var config :Dictionary
+	config["live_update"] = _live_update
+	config["include_children"] = _include_children
+	return config
+
+
+func set_config(config: Dictionary) -> void:
+	_live_update = config.get("live_update", _live_update)
+	_include_children = config.get("include_children", _include_children)
+
+
+func update_config() -> void:
+	$LiveUpdateCheckbox.button_pressed = _live_update
+	$IncludeChildrenCheckbox.button_pressed = _include_children
+
+
+func save_config() -> void:
+	var config := get_config()
+	api.general.get_global().config_cache.set_value(tool_slot.kname, kname, config)
 
 
 func _exit_tree() -> void:
 	if skeleton_preview:
-		skeleton_preview.announce_removal(self)
+		skeleton_preview.announce_tool_removal(self)
 		skeleton_preview.queue_redraw()
 
 
-func draw_start(_pos: Vector2i) -> void:
+func draw_start(pos: Vector2i) -> void:
 	if !skeleton_preview:
 		return
 	# If this tool is on both sides then only allow one at a time
@@ -43,16 +82,17 @@ func draw_start(_pos: Vector2i) -> void:
 		return
 	skeleton_preview.transformation_active = true
 	is_transforming = true
-	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
 	var gizmo = skeleton_preview.selected_gizmo
 	if !gizmo:
 		return
 	if gizmo.modify_mode == NONE:
 		# When moving mouse we may stop hovering but we are still modifying that gizmo.
 		# this is why we need a sepatate modify_mode variable
-		gizmo.modify_mode = gizmo.hover_mode(mouse_point, api.general.get_global().camera.zoom)
+		gizmo.modify_mode = gizmo.hover_mode(Vector2(pos), api.general.get_global().camera.zoom)
 	if prev_mouse_position == Vector2.INF:
-		prev_mouse_position = mouse_point
+		prev_mouse_position = Vector2(pos)
+	_generation_count = 0
+	_interval_count = 0
 
 
 func draw_move(_pos: Vector2i) -> void:
@@ -61,10 +101,12 @@ func draw_move(_pos: Vector2i) -> void:
 		return
 	if !skeleton_preview:
 		return
-	# We need mouse_point to be a Vector2 in order for rotation to work properly
+	# We need mouse_point to be a Vector2 in order for rotation to work properly.
 	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
 	var offset := mouse_point - prev_mouse_position
 	var gizmo = skeleton_preview.selected_gizmo
+	if !gizmo:
+		return
 	if gizmo.modify_mode == OFFSET:
 		if Input.is_key_pressed(KEY_CTRL):
 			skeleton_preview.ignore_render_once = true
@@ -86,8 +128,39 @@ func draw_move(_pos: Vector2i) -> void:
 				gizmo.gizmo_length = gizmo.rel_to_start_point(mouse_point).length()
 		else:
 			gizmo.bone_rotation -= diff
+	if _live_update:
+		# A Smart system to optimize generation frequency
+		if _interval_count >= 10:
+			if (_generation_count) < MAX_GENERATION_FREQ:
+				# Low generation counts detected, likely because user doesn't care about
+				# small movements. Assist by decreasing the frequency further
+				generation_threshold -= 0.5 * (_generation_count - MAX_GENERATION_FREQ)
+			else:
+				# High generation counts detected, likely because user cares about
+				# small movements. Assist by increasing the frequency further
+				generation_threshold += 0.5 * (MAX_GENERATION_FREQ - _generation_count)
+			generation_threshold = clampf(generation_threshold, 1, 20)
+			_generation_count = 0
+			_interval_count = 0
+		if ProjectSettings.get_setting("rendering/driver/threads/thread_model") != 2:
+			if (mouse_point - prev_mouse_position).length() <= generation_threshold:  # If we are moving slow enough
+				_generation_count += 1
+				skeleton_preview.generate_pose()
+			else:  # This may seem trivial but it's actually important
+				skeleton_preview.generate_timer.start()
+		else:  # Multi-threaded mode (Currently pixelorama is single threaded)
+			if not live_thread.is_alive():
+				var error := live_thread.start(skeleton_preview.generate_pose)
+				if error != OK:  # Thread failed, so do this the hard way.
+					# Only update if we are moving slow enough
+					if (mouse_point - prev_mouse_position).length() <= generation_threshold:
+						_generation_count += 1
+						skeleton_preview.generate_pose()
+					else:  # This may seem trivial but it's actually important
+						# NOTE: We don't need _generation_count here.
+						skeleton_preview.generate_timer.start()
+		_interval_count += 1
 	prev_mouse_position = mouse_point
-	#skeleton_preview.generate_pose()  ## Uncomment me for live update
 
 
 func draw_end(_pos: Vector2i) -> void:
@@ -106,11 +179,7 @@ func draw_end(_pos: Vector2i) -> void:
 
 func quick_set_bones(bone_id: int):
 	if skeleton_preview:
-		var bone_names = Array()
-		if bone_id == 0: # All bones
-			bone_names = skeleton_preview.current_frame_bones.keys()
-		else:
-			bone_names.append(quick_set_bones_menu.get_popup().get_item_text(bone_id))
+		var bone_names = get_selected_bone_names(quick_set_bones_menu.get_popup(), bone_id)
 		var new_data = skeleton_preview.current_frame_data.duplicate(true)
 		for layer_idx: int in api.project.current_project.layers.size():
 			var bone_name: StringName = api.project.current_project.layers[layer_idx].name
@@ -124,13 +193,31 @@ func quick_set_bones(bone_id: int):
 		skeleton_preview.generate_pose()
 
 
+func copy_bone_data(bone_id: int, from_frame: int, popup: PopupMenu, old_current_frame: int):
+	if skeleton_preview:
+		if old_current_frame != skeleton_preview.current_frame:
+			return
+		var bone_names := get_selected_bone_names(popup, bone_id)
+		var new_data = skeleton_preview.current_frame_data.duplicate(true)
+		var copy_data: Dictionary = skeleton_preview.load_frame_info(
+			api.project.current_project, from_frame
+		)
+		for bone_name in bone_names:
+			if bone_name in skeleton_preview.current_frame_bones.keys():
+				new_data[bone_name] = skeleton_preview.current_frame_bones[bone_name].reset_bone(
+					copy_data.get(bone_name, {})
+				)
+		skeleton_preview.current_frame_data = new_data
+		skeleton_preview.save_frame_info(api.project.current_project)
+		skeleton_preview.queue_redraw()
+		skeleton_preview.generate_pose()
+		copy_pose_from.get_popup().hide()
+		copy_pose_from.get_popup().clear(true)  # To save Memory
+
+
 func reset_bone_angle(bone_id: int):
 	## This rotation will also rotate the child bones as the parent bone's angle is changed.
-	var bone_names = Array()
-	if bone_id == 0: # All bones
-		bone_names = skeleton_preview.current_frame_bones.keys()
-	else:
-		bone_names.append(rotation_reset_menu.get_popup().get_item_text(bone_id))
+	var bone_names := get_selected_bone_names(rotation_reset_menu.get_popup(), bone_id)
 	for bone_name in bone_names:
 		if bone_name in skeleton_preview.current_frame_bones.keys():
 			skeleton_preview.current_frame_bones[bone_name].bone_rotation = 0
@@ -138,9 +225,14 @@ func reset_bone_angle(bone_id: int):
 	skeleton_preview.generate_pose()
 
 
-func _on_rotation_reset_menu_about_to_popup() -> void:
-	if skeleton_preview:
-		populate_popup(rotation_reset_menu.get_popup())
+func reset_bone_position(bone_id: int):
+	## This rotation will also rotate the child bones as the parent bone's angle is changed.
+	var bone_names := get_selected_bone_names(position_reset_menu.get_popup(), bone_id)
+	for bone_name in bone_names:
+		if bone_name in skeleton_preview.current_frame_bones.keys():
+			skeleton_preview.current_frame_bones[bone_name].start_point = Vector2.ZERO
+	skeleton_preview.queue_redraw()
+	skeleton_preview.generate_pose()
 
 
 func _on_quick_set_bones_menu_about_to_popup() -> void:
@@ -148,13 +240,72 @@ func _on_quick_set_bones_menu_about_to_popup() -> void:
 		populate_popup(quick_set_bones_menu.get_popup())
 
 
-func populate_popup(popup: PopupMenu):
+func _on_rotation_reset_menu_about_to_popup() -> void:
+	if skeleton_preview:
+		populate_popup(rotation_reset_menu.get_popup(), {"bone_rotation": 0})
+
+
+func _on_position_reset_menu_about_to_popup() -> void:
+	if skeleton_preview:
+		populate_popup(position_reset_menu.get_popup(), {"start_point": Vector2.ZERO})
+
+
+func _on_copy_pose_from_about_to_popup() -> void:
+	var popup := copy_pose_from.get_popup()
+	popup.clear(true)
+	for frame_idx in api.project.current_project.frames.size():
+		if skeleton_preview.current_frame == frame_idx:
+			continue
+		var popup_submenu = PopupMenu.new()
+		populate_popup(popup_submenu)
+		popup.add_submenu_node_item(str("Frame ", frame_idx + 1), popup_submenu)
+		popup_submenu.id_pressed.connect(
+			copy_bone_data.bind(frame_idx, popup_submenu, skeleton_preview.current_frame)
+		)
+
+
+func _on_include_children_checkbox_toggled(toggled_on: bool) -> void:
+	_include_children = toggled_on
+
+
+func _on_live_update_pressed(toggled_on: bool) -> void:
+	_live_update = toggled_on
+	update_config()
+	save_config()
+
+
+func populate_popup(popup: PopupMenu, reset_properties := {}):
 	popup.clear()
 	if skeleton_preview.current_frame_bones.is_empty():
 		return
 	popup.add_item("All Bones")
-	for bone_name in skeleton_preview.current_frame_bones.keys():
-		popup.add_item(bone_name)
+	var items_added_after_prev_separator := true
+	for bone in skeleton_preview.current_frame_bones.values():
+		if bone.parent_bone_name == "" and items_added_after_prev_separator:  ## Root nodes
+			popup.add_separator(str("Root:", bone.bone_name))
+			items_added_after_prev_separator = false
+		if reset_properties.is_empty():
+			popup.add_item(bone.bone_name)
+		else:
+			for property: String in reset_properties.keys():
+				if bone.get(property) != reset_properties[property]:
+					popup.add_item(bone.bone_name)
+					items_added_after_prev_separator = true
+					break
+
+
+func get_selected_bone_names(popup: PopupMenu, bone_id: int) -> PackedStringArray:
+	var bone_names = PackedStringArray()
+	if bone_id == 0: # All bones
+		bone_names = skeleton_preview.current_frame_bones.keys()
+	else:
+		var bone_name: String = popup.get_item_text(bone_id)
+		bone_names.append(bone_name)
+		if _include_children:
+			for bone in skeleton_preview.current_frame_bones.values():
+				if bone.parent_bone_name in bone_names:
+					bone_names.append(bone.bone_name)
+	return bone_names
 
 
 ## This manages the hovering mechanism of gizmo
