@@ -367,18 +367,22 @@ func manage_project_changed(should_connect := false) -> void:
 		clean_data()
 		for layer in api.project.current_project.layers:
 			if layer != pose_layer:
-				if layer.get_layer_type() != 1:
-					layer.visibility_changed.connect(generate_pose)
-				#layer.effects_added_removed.connect(generate_pose)  ## TODO: uncomment for Pixelorama v1.1
-				layer.name_changed.connect(layer_name_changed.bind(layer, layer.name))
+				if layer.get_layer_type() != 1:  # Treatment for simple layers
+					if !layer.visibility_changed.is_connected(generate_pose):
+						layer.visibility_changed.connect(generate_pose)
+				if !layer.name_changed.is_connected(layer_name_changed):  # Treatment for group layers
+					layer.name_changed.connect(layer_name_changed.bind(layer, layer.name))
+					#layer.effects_added_removed.connect(generate_pose)  ## TODO: uncomment for Pixelorama v1.1
 		return
 	## Add stuff which disconnects on project changed
 	for layer in api.project.current_project.layers:
 		if layer != pose_layer:
-			if layer.get_layer_type() != 1:
-				layer.visibility_changed.disconnect(generate_pose)
-			#layer.effects_added_removed.disconnect(generate_pose)  ## TODO: uncomment for Pixelorama v1.1
-			layer.name_changed.disconnect(layer_name_changed)
+			if layer.get_layer_type() != 1:  # Treatment for simple layers
+				if layer.visibility_changed.is_connected(generate_pose):
+					layer.visibility_changed.disconnect(generate_pose)
+			if layer.name_changed.is_connected(layer_name_changed):  # Treatment for group layers
+				layer.name_changed.disconnect(layer_name_changed)
+				#layer.effects_added_removed.disconnect(generate_pose)  ## TODO: uncomment for Pixelorama v1.1
 
 
 func clean_data() -> void:
