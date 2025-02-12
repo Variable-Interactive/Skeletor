@@ -25,7 +25,7 @@ var active_skeleton_tools := Array()
 
 class SkeletonGizmo:
 	## This class is used/created to perform calculations
-	enum {NONE, OFFSET, ROTATE, SCALE}  ## I planned to add scaling too but decided to give up
+	enum {NONE, DISPLACE, ROTATE, SCALE}  ## I planned to add scaling too but decided to give up
 	const InteractionDistance = 20
 	const MIN_LENGTH: float = 10
 	const START_RADIUS: float = 6
@@ -99,24 +99,26 @@ class SkeletonGizmo:
 	func hover_mode(mouse_position: Vector2, camera_zoom) -> int:
 		var local_mouse_pos = rel_to_origin(mouse_position)
 		if (start_point).distance_to(local_mouse_pos) <= InteractionDistance / camera_zoom.x:
-			return OFFSET
+			return DISPLACE
 		elif (
 			(start_point + end_point).distance_to(local_mouse_pos)
 			<= InteractionDistance / camera_zoom.x
 		):
 			return SCALE
 		elif is_close_to_segment(
-			rel_to_start_point(local_mouse_pos), WIDTH / camera_zoom.x, Vector2.ZERO, end_point
+			rel_to_start_point(mouse_position),
+			InteractionDistance / camera_zoom.x,
+			Vector2.ZERO, end_point
 		):
 			return ROTATE
 		return NONE
 
 	static func is_close_to_segment(
-		pos: Vector2, snapping_distance: float, s1: Vector2, s2: Vector2
+		pos: Vector2, detect_distance: float, s1: Vector2, s2: Vector2
 	) -> bool:
 		var test_line := (s2 - s1).rotated(deg_to_rad(90)).normalized()
-		var from_a := pos - test_line * snapping_distance
-		var from_b := pos + test_line * snapping_distance
+		var from_a := pos - test_line * detect_distance
+		var from_b := pos + test_line * detect_distance
 		if Geometry2D.segment_intersects_segment(from_a, from_b, s1, s2):
 			return true
 		return false
@@ -489,7 +491,7 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 	draw_circle(
 		gizmo.start_point,
 		gizmo.START_RADIUS / camera_zoom.x,
-		main_color if (hover_mode == gizmo.OFFSET) else dim_color, false,
+		main_color if (hover_mode == gizmo.DISPLACE) else dim_color, false,
 		width
 	)
 	draw_line(

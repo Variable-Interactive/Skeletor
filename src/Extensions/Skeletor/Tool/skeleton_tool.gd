@@ -1,24 +1,27 @@
 extends VBoxContainer
 
-enum {NONE, OFFSET, ROTATE, SCALE}  ## same as the one in SkeletonGizmo class
+enum {NONE, DISPLACE, ROTATE, SCALE}  ## same as the one in SkeletonGizmo class
 const MAX_GENERATION_FREQ = 5
 var api: Node
 var tool_slot
 var kname: String
 var cursor_text := ""
 var skeleton_preview: Node2D
-var prev_mouse_position := Vector2.INF
 var is_transforming := false
-var _include_children := false
-var _live_update := false
 var generation_threshold: float = 5
 var live_thread := Thread.new()
+
+var _include_children := false
+var _live_update := false
+var _generation_count: float = 0
+var _interval_count: int = 0
+var _displace_offset := Vector2.ZERO
+var _prev_mouse_position := Vector2.INF
+
 @onready var quick_set_bones_menu: MenuButton = $QuickSetBones
 @onready var rotation_reset_menu: MenuButton = $RotationReset
 @onready var position_reset_menu: MenuButton = $PositionReset
 @onready var copy_pose_from: MenuButton = $CopyPoseFrom
-var _generation_count: float = 0
-var _interval_count: int = 0
 
 
 func _ready() -> void:
@@ -74,7 +77,7 @@ func _exit_tree() -> void:
 		skeleton_preview.queue_redraw()
 
 
-func draw_start(pos: Vector2i) -> void:
+func draw_start(_pos: Vector2i) -> void:
 	if !skeleton_preview:
 		return
 	# If this tool is on both sides then only allow one at a time
@@ -83,14 +86,18 @@ func draw_start(pos: Vector2i) -> void:
 	skeleton_preview.transformation_active = true
 	is_transforming = true
 	var gizmo = skeleton_preview.selected_gizmo
+	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
 	if !gizmo:
 		return
 	if gizmo.modify_mode == NONE:
 		# When moving mouse we may stop hovering but we are still modifying that gizmo.
 		# this is why we need a sepatate modify_mode variable
-		gizmo.modify_mode = gizmo.hover_mode(Vector2(pos), api.general.get_global().camera.zoom)
-	if prev_mouse_position == Vector2.INF:
-		prev_mouse_position = Vector2(pos)
+		gizmo.modify_mode = gizmo.hover_mode(
+			Vector2(mouse_point), api.general.get_global().camera.zoom
+		)
+	if _prev_mouse_position == Vector2.INF:
+		_displace_offset = gizmo.rel_to_start_point(mouse_point)
+		_prev_mouse_position = mouse_point
 	_generation_count = 0
 	_interval_count = 0
 
@@ -103,23 +110,23 @@ func draw_move(_pos: Vector2i) -> void:
 		return
 	# We need mouse_point to be a Vector2 in order for rotation to work properly.
 	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
-	var offset := mouse_point - prev_mouse_position
+	var offset := mouse_point - _prev_mouse_position
 	var gizmo = skeleton_preview.selected_gizmo
 	if !gizmo:
 		return
-	if gizmo.modify_mode == OFFSET:
+	if gizmo.modify_mode == DISPLACE:
 		if Input.is_key_pressed(KEY_CTRL):
 			skeleton_preview.ignore_render_once = true
 			gizmo.gizmo_origin += offset.rotated(-gizmo.bone_rotation)
-			gizmo.start_point = Vector2i(gizmo.rel_to_origin(mouse_point))
-		else:
-			gizmo.start_point = gizmo.rel_to_origin(mouse_point)
+		gizmo.start_point = Vector2i(gizmo.rel_to_origin(mouse_point) - _displace_offset)
 	elif (
 		gizmo.modify_mode == ROTATE
 		or gizmo.modify_mode == SCALE
 	):
 		var localized_mouse_norm: Vector2 = gizmo.rel_to_start_point(mouse_point).normalized()
-		var localized_prev_mouse_norm: Vector2 = gizmo.rel_to_start_point(prev_mouse_position).normalized()
+		var localized_prev_mouse_norm: Vector2 = gizmo.rel_to_start_point(
+			_prev_mouse_position
+		).normalized()
 		var diff := localized_mouse_norm.angle_to(localized_prev_mouse_norm)
 		if Input.is_key_pressed(KEY_CTRL):
 			skeleton_preview.ignore_render_once = true
@@ -143,7 +150,8 @@ func draw_move(_pos: Vector2i) -> void:
 			_generation_count = 0
 			_interval_count = 0
 		if ProjectSettings.get_setting("rendering/driver/threads/thread_model") != 2:
-			if (mouse_point - prev_mouse_position).length() <= generation_threshold:  # If we are moving slow enough
+			# Generate Image if we are moving slower than generation_threshold
+			if (mouse_point - _prev_mouse_position).length() <= generation_threshold:
 				_generation_count += 1
 				skeleton_preview.generate_pose()
 			else:  # This may seem trivial but it's actually important
@@ -152,18 +160,20 @@ func draw_move(_pos: Vector2i) -> void:
 			if not live_thread.is_alive():
 				var error := live_thread.start(skeleton_preview.generate_pose)
 				if error != OK:  # Thread failed, so do this the hard way.
-					# Only update if we are moving slow enough
-					if (mouse_point - prev_mouse_position).length() <= generation_threshold:
+					# Generate Image if we are moving slower than generation_threshold
+					if (mouse_point - _prev_mouse_position).length() <= generation_threshold:
 						_generation_count += 1
 						skeleton_preview.generate_pose()
 					else:  # This may seem trivial but it's actually important
 						# NOTE: We don't need _generation_count here.
 						skeleton_preview.generate_timer.start()
 		_interval_count += 1
-	prev_mouse_position = mouse_point
+	_prev_mouse_position = mouse_point
 
 
 func draw_end(_pos: Vector2i) -> void:
+	_prev_mouse_position = Vector2.INF
+	_displace_offset = Vector2.ZERO
 	if skeleton_preview:
 		# Another tool is already active
 		if not is_transforming:
@@ -174,7 +184,6 @@ func draw_end(_pos: Vector2i) -> void:
 			if skeleton_preview.selected_gizmo.modify_mode != NONE:
 				skeleton_preview.generate_pose()
 				skeleton_preview.selected_gizmo.modify_mode = NONE
-	prev_mouse_position = Vector2.INF
 
 
 func quick_set_bones(bone_id: int):
