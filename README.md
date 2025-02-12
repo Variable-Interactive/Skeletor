@@ -1,5 +1,6 @@
 ## Skeletor
-[Demo Project](https://github.com/user-attachments/files/18738751/Extract.me.zip)
+
+[Demo Project](https://github.com/user-attachments/files/18762945/Demo.Project.Extract.me.zip)
 
 This is a pixelorama extension that add basic Skeletal animation capabilities to the software.
 To use it:
