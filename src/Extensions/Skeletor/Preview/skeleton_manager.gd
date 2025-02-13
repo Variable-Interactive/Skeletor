@@ -423,6 +423,7 @@ func project_data_changed(project) -> void:
 
 
 func project_layers_moved() -> void:
+	await get_tree().process_frame  # Wait for the project to adjust
 	if is_sane(api.project.current_project):
 		update_frame_data()
 		if api.project.current_project.current_layer == pose_layer.index:
