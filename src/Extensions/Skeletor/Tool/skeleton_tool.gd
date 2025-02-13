@@ -2,7 +2,7 @@ extends VBoxContainer
 
 enum {NONE, DISPLACE, ROTATE, SCALE}  ## same as the one in SkeletonGizmo class
 ## every draw_move there is (value)% posibility of pose generation
-const MAX_GENERATION_FREQ_PERCENT = 70
+const MAX_GENERATION_FREQ_PERCENT = 50
 var api: Node
 var tool_slot
 var kname: String
@@ -12,12 +12,15 @@ var is_transforming := false
 var generation_threshold: float = 20
 var live_thread := Thread.new()
 
-var _live_update := true
+var _live_update := false
+var _allow_chaining := false
 var _include_children := false
 var _generation_count: float = 0
 var _interval_count: int = 0
 var _displace_offset := Vector2.ZERO
 var _prev_mouse_position := Vector2.INF
+var _distance_to_parent: float = 0
+var _chained_gizmo = null
 
 @onready var quick_set_bones_menu: MenuButton = $QuickSetBones
 @onready var rotation_reset_menu: MenuButton = $RotationReset
@@ -53,18 +56,24 @@ func load_config() -> void:
 func get_config() -> Dictionary:
 	var config :Dictionary
 	config["live_update"] = _live_update
+	config["allow_chaining"] = _allow_chaining
 	config["include_children"] = _include_children
 	return config
 
 
 func set_config(config: Dictionary) -> void:
 	_live_update = config.get("live_update", _live_update)
+	_allow_chaining = config.get("allow_chaining", _allow_chaining)
 	_include_children = config.get("include_children", _include_children)
 
 
 func update_config() -> void:
 	%LiveUpdateCheckbox.button_pressed = _live_update
+	%AllowChaining.button_pressed = _allow_chaining
 	%IncludeChildrenCheckbox.button_pressed = _include_children
+	if skeleton_preview:
+		skeleton_preview.bones_chained = _allow_chaining
+		skeleton_preview.queue_redraw()
 
 
 func save_config() -> void:
@@ -99,6 +108,12 @@ func draw_start(_pos: Vector2i) -> void:
 	if _prev_mouse_position == Vector2.INF:
 		_displace_offset = gizmo.rel_to_start_point(mouse_point)
 		_prev_mouse_position = mouse_point
+	# Check if bone is a parent of anything (skip if it is)
+	if _allow_chaining and gizmo.parent_bone_name in skeleton_preview.current_frame_bones.keys():
+		var parent_bone = skeleton_preview.current_frame_bones[gizmo.parent_bone_name]
+		var bone_start: Vector2i = gizmo.rel_to_global(gizmo.start_point)
+		var parent_start: Vector2i = parent_bone.rel_to_global(parent_bone.start_point)
+		_distance_to_parent = bone_start.distance_to(parent_start)
 	_generation_count = 0
 	_interval_count = 0
 
@@ -115,6 +130,14 @@ func draw_move(_pos: Vector2i) -> void:
 	var gizmo = skeleton_preview.selected_gizmo
 	if !gizmo:
 		return
+	if _allow_chaining and gizmo.parent_bone_name in skeleton_preview.current_frame_bones.keys():
+		match gizmo.modify_mode:  # This manages chaining
+			DISPLACE:
+				_chained_gizmo = gizmo
+				gizmo = skeleton_preview.current_frame_bones[gizmo.parent_bone_name]
+				gizmo.modify_mode = ROTATE
+				skeleton_preview.selected_gizmo = gizmo
+				_chained_gizmo.modify_mode = NONE
 	if gizmo.modify_mode == DISPLACE:
 		if Input.is_key_pressed(KEY_CTRL):
 			skeleton_preview.ignore_render_once = true
@@ -136,6 +159,8 @@ func draw_move(_pos: Vector2i) -> void:
 				gizmo.gizmo_length = gizmo.rel_to_start_point(mouse_point).length()
 		else:
 			gizmo.bone_rotation -= diff
+			if _allow_chaining and _chained_gizmo:
+				_chained_gizmo.bone_rotation += diff
 	if _live_update:
 		# A Smart system to optimize generation frequency
 		if _interval_count >= 10:
@@ -176,16 +201,24 @@ func draw_move(_pos: Vector2i) -> void:
 func draw_end(_pos: Vector2i) -> void:
 	_prev_mouse_position = Vector2.INF
 	_displace_offset = Vector2.ZERO
+	_chained_gizmo = null
 	if skeleton_preview:
 		# Another tool is already active
 		if not is_transforming:
 			return
 		is_transforming = false
 		skeleton_preview.transformation_active = false
-		if skeleton_preview.selected_gizmo:
-			if skeleton_preview.selected_gizmo.modify_mode != NONE:
+		var gizmo = skeleton_preview.selected_gizmo
+		if gizmo:
+			if gizmo.modify_mode != NONE:
 				skeleton_preview.generate_pose()
 				skeleton_preview.selected_gizmo.modify_mode = NONE
+			if (
+				_allow_chaining
+				and gizmo.parent_bone_name in skeleton_preview.current_frame_bones.keys()
+			):
+				if gizmo.modify_mode == DISPLACE:
+					skeleton_preview.current_frame_bones[gizmo.parent_bone_name].modify_mode = NONE
 
 
 func quick_set_bones(bone_id: int):
@@ -277,6 +310,14 @@ func _on_copy_pose_from_about_to_popup() -> void:
 
 func _on_include_children_checkbox_toggled(toggled_on: bool) -> void:
 	_include_children = toggled_on
+	update_config()
+	save_config()
+
+
+func _on_allow_chaining_toggled(toggled_on: bool) -> void:
+	_allow_chaining = toggled_on
+	update_config()
+	save_config()
 
 
 func _on_live_update_pressed(toggled_on: bool) -> void:
@@ -334,6 +375,21 @@ func cursor_move(pos: Vector2i) -> void:
 				bone.hover_mode(pos, global.camera.zoom) != NONE
 				or bone.modify_mode != NONE
 			):
+				var skip_gizmo := false
+				if (
+					_allow_chaining
+					and (
+						bone.modify_mode == ROTATE
+						or bone.hover_mode(pos, global.camera.zoom) == ROTATE
+						)
+				):
+					# Check if bone is a parent of anything (if it has, skip it)
+					for other_gizmo in skeleton_preview.current_frame_bones.values():
+						if other_gizmo.bone_name == bone.parent_bone_name:
+							skip_gizmo = true
+							break
+				if skip_gizmo:
+					continue
 				skeleton_preview.selected_gizmo = bone
 				skeleton_preview.update_frame_data()
 				break

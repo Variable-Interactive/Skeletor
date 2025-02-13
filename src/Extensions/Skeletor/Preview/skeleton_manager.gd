@@ -7,6 +7,7 @@ var selected_gizmo: SkeletonGizmo
 var current_frame_bones: Dictionary
 ## A Dictionary with Bone names as keys and their "Data Dictionary" as values.
 var current_frame_data: Dictionary
+var bones_chained := false
 var current_frame: int = -1
 var prev_layer_count: int = 0
 var prev_frame_count: int = 0
@@ -499,19 +500,26 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 		main_color if (hover_mode == gizmo.DISPLACE) else dim_color, false,
 		width
 	)
-	draw_line(
-		gizmo.start_point,
-		gizmo.start_point + gizmo.end_point,
-		main_color if (hover_mode == gizmo.ROTATE) else dim_color,
-		width if (hover_mode == gizmo.ROTATE) else gizmo.DESELECT_WIDTH / camera_zoom.x
-	)
-	draw_circle(
-		gizmo.start_point + gizmo.end_point,
-		gizmo.END_RADIUS / camera_zoom.x,
-		main_color if (hover_mode == gizmo.SCALE) else dim_color,
-		false,
-		width
-	)
+	var skip_rotation_gizmo := false
+	if bones_chained:
+		for other_gizmo: SkeletonGizmo in current_frame_bones.values():
+			if other_gizmo.parent_bone_name == gizmo.bone_name:
+				skip_rotation_gizmo = true
+				break
+	if !skip_rotation_gizmo:
+		draw_line(
+			gizmo.start_point,
+			gizmo.start_point + gizmo.end_point,
+			main_color if (hover_mode == gizmo.ROTATE) else dim_color,
+			width if (hover_mode == gizmo.ROTATE) else gizmo.DESELECT_WIDTH / camera_zoom.x
+		)
+		draw_circle(
+			gizmo.start_point + gizmo.end_point,
+			gizmo.END_RADIUS / camera_zoom.x,
+			main_color if (hover_mode == gizmo.SCALE) else dim_color,
+			false,
+			width
+		)
 	## Show connection to parent
 	if gizmo.parent_bone_name in current_frame_bones.keys():
 		var parent_bone: SkeletonGizmo = current_frame_bones[gizmo.parent_bone_name]
@@ -524,7 +532,14 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 	if get_node_or_null("/root/Themes"):
 		var font = get_node_or_null("/root/Themes").get_font()
 		draw_set_transform(gizmo.gizmo_origin + gizmo.start_point, rotation, Vector2.ONE / camera_zoom.x)
-		draw_string(font, Vector2.ZERO, gizmo.bone_name)
+		var line_size = gizmo.gizmo_length
+		var fade_ratio = (line_size/font.get_string_size(gizmo.bone_name).x) * camera_zoom.x
+		var alpha = clampf(fade_ratio, 0.6, 1)
+		if fade_ratio < 0.3:
+			alpha = 0
+		draw_string(
+			font, Vector2.ZERO, gizmo.bone_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, alpha)
+		)
 
 
 func _apply_bone(gen, bone_name: String, cel_image: Image) -> void:
