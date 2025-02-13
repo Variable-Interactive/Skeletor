@@ -39,6 +39,7 @@ tooltip_text = "(Enabled) The update happens continuously
 as the bone is modified
 
 (Disabled) The update only happens at the end of modification."
+button_pressed = true
 
 [node name="Label" type="Label" parent="GridContainer"]
 layout_mode = 2

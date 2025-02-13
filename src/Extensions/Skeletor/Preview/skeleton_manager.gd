@@ -361,7 +361,7 @@ func manage_signals(is_disconnecting := false) -> void:
 # Manages connections of signals that have to be re-determined everytime project switches
 func manage_project_changed(should_connect := false) -> void:
 	var project = api.project.current_project
-	var undo_redo: UndoRedo = project.undo_redo
+	#var undo_redo: UndoRedo = project.undo_redo  ## TODO: uncomment for Pixelorama v1.1
 	if should_connect:
 		## Add stuff which connects on project changed
 		clean_data()
@@ -407,7 +407,7 @@ func cel_switched() -> void:
 	if current_frame_data.is_empty():
 		queue_generate = true
 	update_frame_data()
-	if !pose_layer:  ## Do nothing more if pose layer doesn't exist
+	if !is_sane(api.project.current_project):  ## Do nothing more if pose layer doesn't exist
 		return
 	manage_layer_visibility()
 
@@ -528,27 +528,28 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 
 
 func _apply_bone(gen, bone_name: String, cel_image: Image) -> void:
-	var bone_info: Dictionary = current_frame_data.get(bone_name, {})
-	var offset_amount: Vector2i = bone_info.get("start_point", Vector2i.ZERO)
-	var pivot := Vector2i(bone_info.get("gizmo_origin", Vector2.ZERO))
-	if bone_info.get("bone_rotation", 0) == 0 and offset_amount == Vector2i.ZERO:
-		return
-
 	var used_region := cel_image.get_used_rect()
+	var bone_info: Dictionary = current_frame_data.get(bone_name, {})
+	var start_point: Vector2i = bone_info.get("start_point", Vector2i.ZERO)
+	var gizmo_origin := Vector2i(bone_info.get("gizmo_origin", Vector2.ZERO))
+	var angle: float = bone_info.get("bone_rotation", 0)
+	if bone_info.get("bone_rotation", 0) == 0 and start_point == Vector2i.ZERO:
+		return
 	if used_region.size == Vector2i.ZERO:
 		return
-	var used_region_with_p := used_region.merge(Rect2i(pivot, Vector2i.ONE))
-	var image_to_rotate = cel_image.get_region(used_region)
-	## Imprint on a square for rotation (We are doing this so that the image doesn't get clipped as)
-	## a result of rotation.
-	var diagonal_length := ceili((used_region_with_p.size).length() * 2)
+
+	## Imprint on a square for rotation
+	## (We are doing this so that the image doesn't get clipped as a result of rotation.)
+	var diagonal_length := maxi(used_region.size.x, used_region.size.y)
 	if diagonal_length % 2 == 0:
 		diagonal_length += 1
-	var square_image = Image.create_empty(diagonal_length, diagonal_length, false, Image.FORMAT_RGBA8)
-	var s_offset: Vector2i = (Vector2(square_image.get_size()) / 2).ceil() + Vector2(used_region.position) - Vector2(pivot)
-	square_image.blit_rect(image_to_rotate, Rect2i(Vector2i.ZERO, image_to_rotate.get_size()), s_offset)
-	var added_rect = square_image.get_used_rect()
-
+	var s_offset: Vector2i = (
+		0.5 * (Vector2i(diagonal_length, diagonal_length)
+		- used_region.size)
+	).floor()
+	var square_image = cel_image.get_region(
+		Rect2i(used_region.position - s_offset, Vector2i(diagonal_length, diagonal_length))
+	)
 	## Apply Rotation To this Image
 	if bone_info.get("bone_rotation", 0) != 0:
 		var transformation_matrix := Transform2D(bone_info.get("bone_rotation", 0), Vector2.ZERO)
@@ -565,14 +566,22 @@ func _apply_bone(gen, bone_name: String, cel_image: Image) -> void:
 			rotate_params, square_image.get_size()
 		)
 	cel_image.fill(Color(0, 0, 0, 0))
+	var pivot: Vector2i = gizmo_origin
+	var bone_start_global: Vector2i = gizmo_origin + start_point
+	var square_image_start: Vector2i = used_region.position - s_offset
+	var global_square_centre: Vector2 = square_image_start + (square_image.get_size() / 2)
+	var global_rotated_new_centre = (
+		(global_square_centre - Vector2(pivot)).rotated(angle)
+		+ Vector2(bone_start_global)
+	)
+	var new_start: Vector2i = (
+		square_image_start
+		+ Vector2i((global_rotated_new_centre - global_square_centre).floor())
+	)
 	cel_image.blit_rect(
 		square_image,
-		square_image.get_used_rect(),
-		(
-			used_region.position
-			+ (square_image.get_used_rect().position - added_rect.position)
-			+ offset_amount
-		)
+		Rect2i(Vector2.ZERO, square_image.get_size()),
+		Vector2i(new_start)
 	)
 
 
@@ -632,7 +641,6 @@ func assign_pose_layer(layer) -> void:
 		layer.set_meta("SkeletorPoseLayer", true)
 		if pose_layer.visibility_changed.is_connected(generate_pose):
 			pose_layer.visibility_changed.disconnect(generate_pose)
-			#manage_layer_visibility()  # TODO see this later
 
 
 func find_pose_layer(project) -> RefCounted:

@@ -1,18 +1,19 @@
 extends VBoxContainer
 
 enum {NONE, DISPLACE, ROTATE, SCALE}  ## same as the one in SkeletonGizmo class
-const MAX_GENERATION_FREQ = 5
+## every draw_move there is (value)% posibility of pose generation
+const MAX_GENERATION_FREQ_PERCENT = 70
 var api: Node
 var tool_slot
 var kname: String
 var cursor_text := ""
 var skeleton_preview: Node2D
 var is_transforming := false
-var generation_threshold: float = 5
+var generation_threshold: float = 20
 var live_thread := Thread.new()
 
+var _live_update := true
 var _include_children := false
-var _live_update := false
 var _generation_count: float = 0
 var _interval_count: int = 0
 var _displace_offset := Vector2.ZERO
@@ -138,14 +139,15 @@ func draw_move(_pos: Vector2i) -> void:
 	if _live_update:
 		# A Smart system to optimize generation frequency
 		if _interval_count >= 10:
-			if (_generation_count) < MAX_GENERATION_FREQ:
+			var max_updates_allowed = float(MAX_GENERATION_FREQ_PERCENT) / 10
+			if (_generation_count) < max_updates_allowed:
 				# Low generation counts detected, likely because user doesn't care about
 				# small movements. Assist by decreasing the frequency further
-				generation_threshold -= 0.5 * (_generation_count - MAX_GENERATION_FREQ)
+				generation_threshold -= 0.5 * (_generation_count - max_updates_allowed)
 			else:
 				# High generation counts detected, likely because user cares about
 				# small movements. Assist by increasing the frequency further
-				generation_threshold += 0.5 * (MAX_GENERATION_FREQ - _generation_count)
+				generation_threshold += 0.5 * (max_updates_allowed - _generation_count)
 			generation_threshold = clampf(generation_threshold, 1, 20)
 			_generation_count = 0
 			_interval_count = 0
