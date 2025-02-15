@@ -22,7 +22,9 @@ var pose_layer:  ## The layer in which a pose is rendered
 		assign_pose_layer(value)
 var generate_timer: Timer
 
+var generation_cache: Dictionary
 var active_skeleton_tools := Array()
+
 
 class SkeletonGizmo:
 	## This class is used/created to perform calculations
@@ -214,6 +216,7 @@ func update_frame_data() -> void:
 		# We added a new frame
 		or project.frames.size() != prev_frame_count
 	):
+		generation_cache.clear()
 		prev_frame_count = project.frames.size()
 		current_frame_bones.clear()
 		selected_gizmo = null
@@ -395,12 +398,14 @@ func clean_data() -> void:
 	prev_frame_count = 0
 	ignore_render_once = false
 	pose_layer = null
+	generation_cache.clear()
 
 
 func texture_changed() -> void:
 	if not is_pose_layer(
 		api.project.current_project.layers[api.project.current_project.current_layer]
 	):
+		generation_cache.clear()
 		queue_generate = true
 
 
@@ -555,7 +560,7 @@ func _apply_bone(gen, bone_name: String, cel_image: Image) -> void:
 
 	## Imprint on a square for rotation
 	## (We are doing this so that the image doesn't get clipped as a result of rotation.)
-	var diagonal_length := maxi(used_region.size.x, used_region.size.y)
+	var diagonal_length := floori(used_region.size.length())
 	if diagonal_length % 2 == 0:
 		diagonal_length += 1
 	var s_offset: Vector2i = (
@@ -575,11 +580,20 @@ func _apply_bone(gen, bone_name: String, cel_image: Image) -> void:
 			"tolerance": 0,
 			"preview": false
 		}
-		gen.generate_image(
-			square_image,
-			api.general.get_drawing_algos().omniscale_shader,
-			rotate_params, square_image.get_size()
-		)
+		var cache_key := str(rotate_params.merged(bone_info).merged(cel_image.data)).sha256_text()
+		if generation_cache.has(bone_name) and cache_key in generation_cache.get(bone_name, {}):
+			square_image = generation_cache[bone_name][cache_key]
+		else:
+			gen.generate_image(
+				square_image,
+				api.general.get_drawing_algos().omniscale_shader,
+				rotate_params, square_image.get_size()
+			)
+			if generation_cache.has(bone_name):
+				generation_cache[bone_name].clear()
+			else:
+				generation_cache[bone_name] = {}
+			generation_cache[bone_name][cache_key] = square_image
 	cel_image.fill(Color(0, 0, 0, 0))
 	var pivot: Vector2i = gizmo_origin
 	var bone_start_global: Vector2i = gizmo_origin + start_point
