@@ -1,8 +1,6 @@
 extends VBoxContainer
 
 enum {NONE, DISPLACE, ROTATE, SCALE}  ## same as the one in SkeletonGizmo class
-## every draw_move there is (value)% posibility of pose generation
-const MAX_GENERATION_FREQ_PERCENT = 50
 var api: Node
 var tool_slot
 var kname: String
@@ -15,8 +13,6 @@ var live_thread := Thread.new()
 var _live_update := false
 var _allow_chaining := false
 var _include_children := false
-var _generation_count: float = 0
-var _interval_count: int = 0
 var _displace_offset := Vector2.ZERO
 var _prev_mouse_position := Vector2.INF
 var _distance_to_parent: float = 0
@@ -114,8 +110,6 @@ func draw_start(_pos: Vector2i) -> void:
 		var bone_start: Vector2i = gizmo.rel_to_global(gizmo.start_point)
 		var parent_start: Vector2i = parent_bone.rel_to_global(parent_bone.start_point)
 		_distance_to_parent = bone_start.distance_to(parent_start)
-	_generation_count = 0
-	_interval_count = 0
 
 
 func draw_move(_pos: Vector2i) -> void:
@@ -162,39 +156,13 @@ func draw_move(_pos: Vector2i) -> void:
 			if _allow_chaining and _chained_gizmo:
 				_chained_gizmo.bone_rotation += diff
 	if _live_update:
-		# A Smart system to optimize generation frequency
-		if _interval_count >= 10:
-			var max_updates_allowed = float(MAX_GENERATION_FREQ_PERCENT) / 10
-			if (_generation_count) < max_updates_allowed:
-				# Low generation counts detected, likely because user doesn't care about
-				# small movements. Assist by decreasing the frequency further
-				generation_threshold -= 0.5 * (_generation_count - max_updates_allowed)
-			else:
-				# High generation counts detected, likely because user cares about
-				# small movements. Assist by increasing the frequency further
-				generation_threshold += 0.5 * (max_updates_allowed - _generation_count)
-			generation_threshold = clampf(generation_threshold, 1, 20)
-			_generation_count = 0
-			_interval_count = 0
 		if ProjectSettings.get_setting("rendering/driver/threads/thread_model") != 2:
-			# Generate Image if we are moving slower than generation_threshold
-			if (mouse_point - _prev_mouse_position).length() <= generation_threshold:
-				_generation_count += 1
-				skeleton_preview.generate_pose()
-			else:  # This may seem trivial but it's actually important
-				skeleton_preview.generate_timer.start()
+			skeleton_preview.generate_pose()
 		else:  # Multi-threaded mode (Currently pixelorama is single threaded)
 			if not live_thread.is_alive():
 				var error := live_thread.start(skeleton_preview.generate_pose)
 				if error != OK:  # Thread failed, so do this the hard way.
-					# Generate Image if we are moving slower than generation_threshold
-					if (mouse_point - _prev_mouse_position).length() <= generation_threshold:
-						_generation_count += 1
-						skeleton_preview.generate_pose()
-					else:  # This may seem trivial but it's actually important
-						# NOTE: We don't need _generation_count here.
-						skeleton_preview.generate_timer.start()
-		_interval_count += 1
+					skeleton_preview.generate_pose()
 	_prev_mouse_position = mouse_point
 
 

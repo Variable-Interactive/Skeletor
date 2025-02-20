@@ -20,8 +20,6 @@ var pose_layer:  ## The layer in which a pose is rendered
 	set(value):
 		pose_layer = value
 		assign_pose_layer(value)
-var generate_timer: Timer
-
 var generation_cache: Dictionary
 var active_skeleton_tools := Array()
 
@@ -194,16 +192,10 @@ func _ready() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 
-	manage_signals()
 	manage_project_changed(true)
 	global.project_about_to_switch.connect(manage_project_changed.bind(false))
 	global.camera.zoom_changed.connect(queue_redraw)
 	api.signals.signal_project_switched(manage_project_changed.bind(true))
-	generate_timer = Timer.new()
-	generate_timer.wait_time = 0.5
-	generate_timer.one_shot = true
-	generate_timer.timeout.connect(generate_pose)
-	add_child(generate_timer)
 
 
 ## Adds info about any new group cels that are added to the timeline.
@@ -375,16 +367,20 @@ func manage_project_changed(should_connect := false) -> void:
 				if !layer.name_changed.is_connected(layer_name_changed):  # Treatment for group layers
 					layer.name_changed.connect(layer_name_changed.bind(layer, layer.name))
 					layer.effects_added_removed.connect(generate_pose)
-		return
-	## Add stuff which disconnects on project changed
-	for layer in api.project.current_project.layers:
-		if layer != pose_layer:
-			if layer.get_layer_type() != 1:  # Treatment for simple layers
-				if layer.visibility_changed.is_connected(generate_pose):
-					layer.visibility_changed.disconnect(generate_pose)
-			if layer.name_changed.is_connected(layer_name_changed):  # Treatment for group layers
-				layer.name_changed.disconnect(layer_name_changed)
-				layer.effects_added_removed.disconnect(generate_pose)
+		await get_tree().process_frame  # Wait for the project to adjust
+		manage_signals()
+		cel_switched()
+	else:
+		## Add stuff which disconnects on project changed
+		manage_signals(true)
+		for layer in api.project.current_project.layers:
+			if layer != pose_layer:
+				if layer.get_layer_type() != 1:  # Treatment for simple layers
+					if layer.visibility_changed.is_connected(generate_pose):
+						layer.visibility_changed.disconnect(generate_pose)
+				if layer.name_changed.is_connected(layer_name_changed):  # Treatment for group layers
+					layer.name_changed.disconnect(layer_name_changed)
+					layer.effects_added_removed.disconnect(generate_pose)
 
 
 func clean_data() -> void:
@@ -578,20 +574,24 @@ func _apply_bone(gen, bone_name: String, cel_image: Image) -> void:
 			"tolerance": 0,
 			"preview": false
 		}
-		var cache_key := str(rotate_params.merged(bone_info).merged(cel_image.data)).sha256_text()
-		if generation_cache.has(bone_name) and cache_key in generation_cache.get(bone_name, {}):
-			square_image = generation_cache[bone_name][cache_key]
+		var bone_key := {
+				"bone_name" : bone_info.get("bone_name", "Invalid Name"),
+				"parent_bone_name" : bone_info.get("parent_bone_name", "Invalid Parent")
+			}
+		var cache_key := str(rotate_params.merged(cel_image.data)).sha256_text()
+		if generation_cache.has(bone_key) and cache_key in generation_cache.get(bone_key, {}):
+			square_image = generation_cache[bone_key][cache_key]
 		else:
 			gen.generate_image(
 				square_image,
 				api.general.get_drawing_algos().omniscale_shader,
 				rotate_params, square_image.get_size()
 			)
-			if generation_cache.has(bone_name):
-				generation_cache[bone_name].clear()
+			if generation_cache.has(bone_key):
+				generation_cache[bone_key].clear()
 			else:
-				generation_cache[bone_name] = {}
-			generation_cache[bone_name][cache_key] = square_image
+				generation_cache[bone_key] = {}
+			generation_cache[bone_key][cache_key] = square_image
 	cel_image.fill(Color(0, 0, 0, 0))
 	var pivot: Vector2i = gizmo_origin
 	var bone_start_global: Vector2i = gizmo_origin + start_point
