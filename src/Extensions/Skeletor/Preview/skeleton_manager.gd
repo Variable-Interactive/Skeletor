@@ -258,7 +258,7 @@ func generate_heirarchy(old_data: Dictionary) -> void:
 			if layer != pose_layer:
 				if layer.get_layer_type() != 1:
 					layer.visibility_changed.connect(generate_pose)
-				#layer.effects_added_removed.connect(generate_pose)  ## TODO: uncomment for Pixelorama v1.1
+				layer.effects_added_removed.connect(generate_pose)
 				layer.name_changed.connect(layer_name_changed.bind(layer, layer.name))
 	for layer_name in invalid_layer_names:
 		old_data.erase(layer_name)
@@ -311,8 +311,7 @@ func generate_pose() -> void:
 		var include := false if (!layer.visible and layer.get_layer_type() != 1) else true
 		var cel = frame.cels[ordered_index]
 		var cel_image: Image
-		#if layer.is_blender():  ## TODO: uncomment for Pixelorama v1.1
-		if layer.get_layer_type() == 1 and layer.blend_mode != -2:  # (PASS_THROUGH)
+		if layer.is_blender():
 			cel_image = layer.blend_children(frame)
 		else:
 			cel_image = layer.display_effects(cel)
@@ -365,7 +364,6 @@ func manage_signals(is_disconnecting := false) -> void:
 # Manages connections of signals that have to be re-determined everytime project switches
 func manage_project_changed(should_connect := false) -> void:
 	var project = api.project.current_project
-	#var undo_redo: UndoRedo = project.undo_redo  ## TODO: uncomment for Pixelorama v1.1
 	if should_connect:
 		## Add stuff which connects on project changed
 		clean_data()
@@ -376,7 +374,7 @@ func manage_project_changed(should_connect := false) -> void:
 						layer.visibility_changed.connect(generate_pose)
 				if !layer.name_changed.is_connected(layer_name_changed):  # Treatment for group layers
 					layer.name_changed.connect(layer_name_changed.bind(layer, layer.name))
-					#layer.effects_added_removed.connect(generate_pose)  ## TODO: uncomment for Pixelorama v1.1
+					layer.effects_added_removed.connect(generate_pose)
 		return
 	## Add stuff which disconnects on project changed
 	for layer in api.project.current_project.layers:
@@ -386,7 +384,7 @@ func manage_project_changed(should_connect := false) -> void:
 					layer.visibility_changed.disconnect(generate_pose)
 			if layer.name_changed.is_connected(layer_name_changed):  # Treatment for group layers
 				layer.name_changed.disconnect(layer_name_changed)
-				#layer.effects_added_removed.disconnect(generate_pose)  ## TODO: uncomment for Pixelorama v1.1
+				layer.effects_added_removed.disconnect(generate_pose)
 
 
 func clean_data() -> void:

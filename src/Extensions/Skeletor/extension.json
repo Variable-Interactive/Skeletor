@@ -5,6 +5,6 @@
 "license": "MIT",
 "name": "Skeletor",
 "nodes": ["Main.tscn"],
-"supported_api_versions": [5],
+"supported_api_versions": [6],
 "version": "0.1"
 }
