@@ -12,7 +12,7 @@ var live_thread := Thread.new()
 
 var _live_update := false
 var _allow_chaining := false
-var _include_children := false
+var _include_children := true
 var _displace_offset := Vector2.ZERO
 var _prev_mouse_position := Vector2.INF
 var _distance_to_parent: float = 0
@@ -22,6 +22,7 @@ var _chained_gizmo = null
 @onready var rotation_reset_menu: MenuButton = $RotationReset
 @onready var position_reset_menu: MenuButton = $PositionReset
 @onready var copy_pose_from: MenuButton = $CopyPoseFrom
+@onready var tween_skeleton_menu: MenuButton = $TweenSkeleton
 
 
 func _ready() -> void:
@@ -41,6 +42,14 @@ func _ready() -> void:
 	position_reset_menu.get_popup().id_pressed.connect(reset_bone_position)
 	kname = name.replace(" ", "_").to_lower()
 	load_config()
+
+
+func _on_warn_pressed() -> void:
+	var warn_text = """
+To avoid any quirky behavior, it is recomended to not tween between
+large rotations, and have "Include bone children" enabled.
+"""
+	api.dialog.show_error(warn_text)
 
 
 func load_config() -> void:
@@ -227,6 +236,44 @@ func copy_bone_data(bone_id: int, from_frame: int, popup: PopupMenu, old_current
 		copy_pose_from.get_popup().clear(true)  # To save Memory
 
 
+func tween_skeleton_data(bone_id: int, from_frame: int, popup: PopupMenu, current_frame: int):
+	if skeleton_preview:
+		if current_frame != skeleton_preview.current_frame:
+			return
+		var bone_names := get_selected_bone_names(popup, bone_id)
+		var start_data: Dictionary = skeleton_preview.load_frame_info(
+			api.project.current_project, from_frame
+		)
+		var end_data: Dictionary = skeleton_preview.load_frame_info(
+			api.project.current_project, current_frame
+		)
+		for frame_idx in range(from_frame + 1, current_frame):
+			var frame_info: Dictionary = skeleton_preview.load_frame_info(
+				api.project.current_project, frame_idx
+			)
+			for bone_name in bone_names:
+				if (
+					bone_name in frame_info.keys()
+					and bone_name in start_data.keys()
+					and bone_name in end_data.keys()
+				):
+					var bone_dict: Dictionary = frame_info[bone_name]
+					for data_key: String in bone_dict.keys():
+						if typeof(bone_dict[data_key]) != TYPE_STRING:
+							bone_dict[data_key] = Tween.interpolate_value(
+								start_data[bone_name][data_key],
+								end_data[bone_name][data_key] - start_data[bone_name][data_key],
+								frame_idx - from_frame,
+								current_frame - from_frame,
+								Tween.TRANS_LINEAR,
+								Tween.EASE_IN
+							)
+			skeleton_preview.save_frame_info(api.project.current_project, frame_info, frame_idx)
+			skeleton_preview.generate_pose(frame_idx)
+		copy_pose_from.get_popup().hide()
+		copy_pose_from.get_popup().clear(true)  # To save Memory
+
+
 func reset_bone_angle(bone_id: int):
 	## This rotation will also rotate the child bones as the parent bone's angle is changed.
 	var bone_names := get_selected_bone_names(rotation_reset_menu.get_popup(), bone_id)
@@ -275,6 +322,19 @@ func _on_copy_pose_from_about_to_popup() -> void:
 			copy_bone_data.bind(frame_idx, popup_submenu, skeleton_preview.current_frame)
 		)
 
+func _on_tween_skeleton_about_to_popup() -> void:
+	var popup := tween_skeleton_menu.get_popup()
+	popup.clear(true)
+	popup.add_separator("Start From")
+	for frame_idx in api.project.current_project.frames.size():
+		if frame_idx >= skeleton_preview.current_frame - 1:
+			break
+		var popup_submenu = PopupMenu.new()
+		populate_popup(popup_submenu)
+		popup.add_submenu_node_item(str("Frame ", frame_idx + 1), popup_submenu)
+		popup_submenu.id_pressed.connect(
+			tween_skeleton_data.bind(frame_idx, popup_submenu, skeleton_preview.current_frame)
+		)
 
 func _on_include_children_checkbox_toggled(toggled_on: bool) -> void:
 	_include_children = toggled_on

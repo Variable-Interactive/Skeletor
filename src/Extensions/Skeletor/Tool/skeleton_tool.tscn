@@ -67,6 +67,7 @@ unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Transformations applied through the buttons below
 will also apply on the children."
+button_pressed = true
 
 [node name="Label2" type="Label" parent="GridContainer"]
 layout_mode = 2
@@ -88,12 +89,36 @@ size_flags_horizontal = 3
 
 [node name="QuickSetBones" type="MenuButton" parent="."]
 layout_mode = 2
+tooltip_text = "Quickly place bones over their respective sprites."
 text = "Quick Set Bones"
 flat = false
 
 [node name="CopyPoseFrom" type="MenuButton" parent="."]
 layout_mode = 2
+tooltip_text = "Copies properties of selected bones from chosen frame to current frame."
 text = "Copy Pose From"
+flat = false
+
+[node name="Section4" type="HBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Section4"]
+layout_mode = 2
+text = "Interpolation"
+
+[node name="HSeparator" type="HSeparator" parent="Section4"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Warn" type="Button" parent="Section4"]
+layout_mode = 2
+text = "[⚠️]"
+flat = true
+
+[node name="TweenSkeleton" type="MenuButton" parent="."]
+layout_mode = 2
+tooltip_text = "Gererates In-Betweens from a chosen start frame to the current frame."
+text = "Tween Skeleton"
 flat = false
 
 [node name="Section" type="HBoxContainer" parent="."]
@@ -109,11 +134,13 @@ size_flags_horizontal = 3
 
 [node name="RotationReset" type="MenuButton" parent="."]
 layout_mode = 2
+tooltip_text = "Resets the rotation of selected bones"
 text = "Bone Rotation"
 flat = false
 
 [node name="PositionReset" type="MenuButton" parent="."]
 layout_mode = 2
+tooltip_text = "Resets the position of selected bones"
 text = "Bone Position"
 flat = false
 
@@ -122,5 +149,7 @@ flat = false
 [connection signal="toggled" from="GridContainer/IncludeChildrenCheckbox" to="." method="_on_include_children_checkbox_toggled"]
 [connection signal="about_to_popup" from="QuickSetBones" to="." method="_on_quick_set_bones_menu_about_to_popup"]
 [connection signal="about_to_popup" from="CopyPoseFrom" to="." method="_on_copy_pose_from_about_to_popup"]
+[connection signal="pressed" from="Section4/Warn" to="." method="_on_warn_pressed"]
+[connection signal="about_to_popup" from="TweenSkeleton" to="." method="_on_tween_skeleton_about_to_popup"]
 [connection signal="about_to_popup" from="RotationReset" to="." method="_on_rotation_reset_menu_about_to_popup"]
 [connection signal="about_to_popup" from="PositionReset" to="." method="_on_position_reset_menu_about_to_popup"]

@@ -267,7 +267,7 @@ func _input(_event: InputEvent) -> void:
 		project.layers[pose_layer.index].locked = true
 
 
-func generate_pose() -> void:
+func generate_pose(for_frame := current_frame) -> void:
 	# Do we even need to generate a pose?
 	if ignore_render_once:  # We had set to ignore generation in this cycle.
 		ignore_render_once = false
@@ -288,9 +288,9 @@ func generate_pose() -> void:
 
 	# Start generating
 	# (Group visibility is completely ignored while the visibility of other layer types is respected)
-	var frame = project.frames[current_frame]
+	var frame = project.frames[for_frame]
 	var previous_ordered_layers: Array[int] = project.ordered_layers
-	project.order_layers(current_frame)
+	project.order_layers(for_frame)
 	var textures: Array[Image] = []
 	var gen = api.general.get_new_shader_image_effect()
 	# Nx4 texture, where N is the number of layers and the first row are the blend modes,
@@ -313,7 +313,7 @@ func generate_pose() -> void:
 
 		var group_layer = layer.parent
 		if is_instance_valid(group_layer):
-			_apply_bone(gen, group_layer.name, cel_image)
+			_apply_bone(gen, group_layer.name, cel_image, for_frame)
 		textures.append(cel_image)
 		if (
 			layer.is_blended_by_ancestor()
@@ -333,7 +333,7 @@ func generate_pose() -> void:
 	# Re-order the layers again to ensure correct canvas drawing
 	project.ordered_layers = previous_ordered_layers
 	project.layers[pose_layer.index].locked = false
-	_render_image(image)
+	_render_image(image, for_frame)
 	project.layers[pose_layer.index].locked = true
 	manage_signals()  # Reconnect signals
 
@@ -547,9 +547,12 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 		)
 
 
-func _apply_bone(gen, bone_name: String, cel_image: Image) -> void:
+func _apply_bone(gen, bone_name: String, cel_image: Image, at_frame := current_frame) -> void:
+	var frame_data = current_frame_data
+	if at_frame != current_frame:
+		frame_data = load_frame_info(api.project.current_project, at_frame)
 	var used_region := cel_image.get_used_rect()
-	var bone_info: Dictionary = current_frame_data.get(bone_name, {})
+	var bone_info: Dictionary = frame_data.get(bone_name, {})
 	var start_point: Vector2i = bone_info.get("start_point", Vector2i.ZERO)
 	var gizmo_origin := Vector2i(bone_info.get("gizmo_origin", Vector2.ZERO))
 	var angle: float = bone_info.get("bone_rotation", 0)
@@ -647,14 +650,17 @@ func _set_layer_metadata_image(
 		image.set_pixel(index, 3, Color(0.2, 0.0, 0.0, 0.0))
 
 
-func _render_image(image: Image) -> void:
+func _render_image(image: Image, at_frame := current_frame) -> void:
 	var project = api.project.current_project
-	var cel_image: Image = project.frames[current_frame].cels[pose_layer.index].get_image()
+	var pixel_cel = project.frames[at_frame].cels[pose_layer.index]
+	var cel_image: Image = pixel_cel.get_image()
+	if pixel_cel.get_class_name() != "PixelCel":  # Failsafe
+		return
 	cel_image.blit_rect(image, Rect2i(Vector2.ZERO, image.get_size()), Vector2.ZERO)
-
-	if pose_layer.index == project.current_layer:
+	pixel_cel.image_changed(cel_image)
+	if at_frame == current_frame and pose_layer.index == project.current_layer:
 		project.selected_cels = []
-		project.change_cel(current_frame, pose_layer.index)
+		project.change_cel(at_frame, pose_layer.index)
 
 
 func is_pose_layer(layer) -> bool:
@@ -724,11 +730,11 @@ func get_best_origin(layer_idx: int) -> Vector2i:
 	return Vector2i.ZERO
 
 
-func save_frame_info(project) -> void:
+func save_frame_info(project, frame_data := current_frame_data, at_frame := current_frame) -> void:
 	if project and is_sane(project):
-		if current_frame >= 0 and current_frame < project.frames.size():
-			project.frames[current_frame].cels[pose_layer.index].set_meta(
-				"SkeletorSkeleton", var_to_str(current_frame_data)
+		if at_frame >= 0 and at_frame < project.frames.size():
+			project.frames[at_frame].cels[pose_layer.index].set_meta(
+				"SkeletorSkeleton", var_to_str(frame_data)
 			)
 			queue_redraw()
 
@@ -737,7 +743,7 @@ func load_frame_info(project, frame_number:= current_frame) -> Dictionary:
 	if !pose_layer:
 		pose_layer = find_pose_layer(project)
 	if project and pose_layer:
-		if current_frame >= 0 and current_frame < project.frames.size():
+		if frame_number >= 0 and frame_number < project.frames.size():
 			var data = project.frames[frame_number].cels[pose_layer.index].get_meta(
 				"SkeletorSkeleton", {}
 			)
