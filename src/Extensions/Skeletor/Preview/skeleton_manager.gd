@@ -76,6 +76,7 @@ class SkeletonGizmo:
 		get():
 			return Vector2(gizmo_length, 0).rotated(gizmo_rotate_origin + bone_rotation)
 	var modify_mode := SkeletonGizmo.NONE
+	var ignore_rotation_hover := false
 
 	static func generate_empty_data(
 		cel_bone_name := "Invalid Name", cel_parent_bone_name := "Invalid Parent"
@@ -105,13 +106,15 @@ class SkeletonGizmo:
 			(start_point + end_point).distance_to(local_mouse_pos)
 			<= InteractionDistance / camera_zoom.x
 		):
-			return SCALE
+			if !ignore_rotation_hover:
+				return SCALE
 		elif is_close_to_segment(
 			rel_to_start_point(mouse_position),
 			InteractionDistance / camera_zoom.x,
 			Vector2.ZERO, end_point
 		):
-			return ROTATE
+			if !ignore_rotation_hover:
+				return ROTATE
 		return NONE
 
 	static func is_close_to_segment(
@@ -505,6 +508,7 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 			if other_gizmo.parent_bone_name == gizmo.bone_name:
 				skip_rotation_gizmo = true
 				break
+	gizmo.ignore_rotation_hover = skip_rotation_gizmo
 	if !skip_rotation_gizmo:
 		draw_line(
 			gizmo.start_point,
@@ -552,8 +556,8 @@ func _apply_bone(gen, bone_name: String, cel_image: Image) -> void:
 	if used_region.size == Vector2i.ZERO:
 		return
 
-	## Imprint on a square for rotation
-	## (We are doing this so that the image doesn't get clipped as a result of rotation.)
+	# Imprint on a square for rotation
+	# (We are doing this so that the image doesn't get clipped as a result of rotation.)
 	var diagonal_length := floori(used_region.size.length())
 	if diagonal_length % 2 == 0:
 		diagonal_length += 1
@@ -564,7 +568,7 @@ func _apply_bone(gen, bone_name: String, cel_image: Image) -> void:
 	var square_image = cel_image.get_region(
 		Rect2i(used_region.position - s_offset, Vector2i(diagonal_length, diagonal_length))
 	)
-	## Apply Rotation To this Image
+	# Apply Rotation To this Image
 	if bone_info.get("bone_rotation", 0) != 0:
 		var transformation_matrix := Transform2D(bone_info.get("bone_rotation", 0), Vector2.ZERO)
 		var rotate_params := {
@@ -574,25 +578,27 @@ func _apply_bone(gen, bone_name: String, cel_image: Image) -> void:
 			"tolerance": 0,
 			"preview": false
 		}
+		# Detects if the rotation is changed for this generation or not
+		# (useful if bone is moved arround while having some rotation)
+		# NOTE: I tried cacheing entire poses (that remain same) as well. It was faster than this
+		# approach but only by a few milliseconds. I don't think straining the memory for only
+		# a boost of a few millisec was worth it so i declare this the most optimal approach.
 		var bone_key := {
-				"bone_name" : bone_info.get("bone_name", "Invalid Name"),
-				"parent_bone_name" : bone_info.get("parent_bone_name", "Invalid Parent")
+				"bone_name" : bone_name,
+				"parent_bone_name" : bone_info.get("parent_bone_name", "")
 			}
-		var cache_key := str(rotate_params.merged(cel_image.data)).sha256_text()
-		if generation_cache.has(bone_key) and cache_key in generation_cache.get(bone_key, {}):
-			square_image = generation_cache[bone_key][cache_key]
+		var cache_key := {"angle": angle, "cel_content": cel_image.get_data()}
+		var bone_cache: Dictionary = generation_cache.get_or_add(bone_key, {})
+		if cache_key in bone_cache.keys():
+			square_image = bone_cache[cache_key]
 		else:
 			gen.generate_image(
 				square_image,
 				api.general.get_drawing_algos().omniscale_shader,
 				rotate_params, square_image.get_size()
 			)
-			if generation_cache.has(bone_key):
-				generation_cache[bone_key].clear()
-			else:
-				generation_cache[bone_key] = {}
-			generation_cache[bone_key][cache_key] = square_image
-	cel_image.fill(Color(0, 0, 0, 0))
+			bone_cache.clear()
+			bone_cache[cache_key] = square_image
 	var pivot: Vector2i = gizmo_origin
 	var bone_start_global: Vector2i = gizmo_origin + start_point
 	var square_image_start: Vector2i = used_region.position - s_offset
@@ -604,6 +610,10 @@ func _apply_bone(gen, bone_name: String, cel_image: Image) -> void:
 	var new_start: Vector2i = (
 		square_image_start
 		+ Vector2i((global_rotated_new_centre - global_square_centre).floor())
+	)
+	cel_image.fill(Color(0, 0, 0, 0))
+	var output: Image = Image.create_empty(
+		cel_image.get_width(), cel_image.get_height(), false, cel_image.get_format()
 	)
 	cel_image.blit_rect(
 		square_image,
