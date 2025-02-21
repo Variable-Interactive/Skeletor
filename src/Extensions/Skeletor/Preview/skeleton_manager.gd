@@ -373,6 +373,8 @@ func manage_project_changed(should_connect := false) -> void:
 		await get_tree().process_frame  # Wait for the project to adjust
 		manage_signals()
 		cel_switched()
+		global.canvas.update_all_layers = true
+		global.canvas.queue_redraw()
 	else:
 		## Add stuff which disconnects on project changed
 		manage_signals(true)
