@@ -20,13 +20,18 @@ In chaining mode you are only allowed to rotate a bone. the children of the bone
   
 https://github.com/user-attachments/assets/190254b8-f62f-4ea6-831c-5ced66af898b
 
-### 3. Draw <=> Pose Mode:
+### 3. Tweening Support
+Gererate In-Betweens from a chosen start frame to the current frame.
+
+https://github.com/user-attachments/assets/11c7b4c1-26bc-430e-98ce-591356a67bf6
+
+### 4. Draw <=> Pose Mode:
 
 You can switch between the two views with ease.
 
 https://github.com/user-attachments/assets/c3918ef7-fc7e-4c4f-ac00-5f4dc283e094
 
-### 4. Quick set bones:
+### 5. Quick set bones:
 You can quickly place bones to roughly over their intended sprites with a single click.
 
 https://github.com/user-attachments/assets/3f2f8328-a181-4533-80fe-db4521b1140d
