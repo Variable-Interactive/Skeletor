@@ -617,9 +617,6 @@ func _apply_bone(gen, bone_name: String, cel_image: Image, at_frame := current_f
 		+ Vector2i((global_rotated_new_centre - global_square_centre).floor())
 	)
 	cel_image.fill(Color(0, 0, 0, 0))
-	var output: Image = Image.create_empty(
-		cel_image.get_width(), cel_image.get_height(), false, cel_image.get_format()
-	)
 	cel_image.blit_rect(
 		square_image,
 		Rect2i(Vector2.ZERO, square_image.get_size()),
