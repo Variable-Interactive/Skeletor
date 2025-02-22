@@ -212,7 +212,6 @@ func update_frame_data() -> void:
 		# We added a new frame
 		or project.frames.size() != prev_frame_count
 	):
-		generation_cache.clear()
 		prev_frame_count = project.frames.size()
 		current_frame_bones.clear()
 		selected_gizmo = null
@@ -400,14 +399,12 @@ func clean_data() -> void:
 	prev_frame_count = 0
 	ignore_render_once = false
 	pose_layer = null
-	generation_cache.clear()
 
 
 func texture_changed() -> void:
 	if not is_pose_layer(
 		api.project.current_project.layers[api.project.current_project.current_layer]
 	):
-		generation_cache.clear()
 		queue_generate = true
 
 

@@ -22,6 +22,7 @@ var _chained_gizmo = null
 @onready var rotation_reset_menu: MenuButton = $RotationReset
 @onready var position_reset_menu: MenuButton = $PositionReset
 @onready var copy_pose_from: MenuButton = $CopyPoseFrom
+@onready var force_refresh_pose: MenuButton = $ForceRefreshPose
 @onready var tween_skeleton_menu: MenuButton = $TweenSkeleton
 
 
@@ -37,9 +38,10 @@ func _ready() -> void:
 		else:
 			$ColorRect.color = api.general.get_global().right_tool_color
 		$Label.text = "Skeleton Options"
-	quick_set_bones_menu.get_popup().id_pressed.connect(quick_set_bones)
-	rotation_reset_menu.get_popup().id_pressed.connect(reset_bone_angle)
-	position_reset_menu.get_popup().id_pressed.connect(reset_bone_position)
+	quick_set_bones_menu.get_popup().index_pressed.connect(quick_set_bones)
+	rotation_reset_menu.get_popup().index_pressed.connect(reset_bone_angle)
+	position_reset_menu.get_popup().index_pressed.connect(reset_bone_position)
+	force_refresh_pose.get_popup().index_pressed.connect(refresh_pose)
 	kname = name.replace(" ", "_").to_lower()
 	load_config()
 
@@ -236,6 +238,15 @@ func copy_bone_data(bone_id: int, from_frame: int, popup: PopupMenu, old_current
 		copy_pose_from.get_popup().clear(true)  # To save Memory
 
 
+func refresh_pose(frame_index: int):
+	if skeleton_manager:
+		var frames := [frame_index - 2]
+		if frame_index == 0:  # All frames
+			frames = range(0, api.project.current_project.frames.size())
+		for frame_idx in frames:
+			skeleton_manager.generate_pose(frame_idx)
+
+
 func tween_skeleton_data(bone_id: int, from_frame: int, popup: PopupMenu, current_frame: int):
 	if skeleton_manager:
 		if current_frame != skeleton_manager.current_frame:
@@ -318,9 +329,18 @@ func _on_copy_pose_from_about_to_popup() -> void:
 		var popup_submenu = PopupMenu.new()
 		populate_popup(popup_submenu)
 		popup.add_submenu_node_item(str("Frame ", frame_idx + 1), popup_submenu)
-		popup_submenu.id_pressed.connect(
+		popup_submenu.index_pressed.connect(
 			copy_bone_data.bind(frame_idx, popup_submenu, skeleton_manager.current_frame)
 		)
+
+func _on_force_refresh_pose_about_to_popup() -> void:
+	var popup := force_refresh_pose.get_popup()
+	popup.clear(true)
+	popup.add_item("All Frames")
+	popup.add_separator()
+	for frame_idx in api.project.current_project.frames.size():
+		popup.add_item(str("Frame ", frame_idx + 1))
+
 
 func _on_tween_skeleton_about_to_popup() -> void:
 	var popup := tween_skeleton_menu.get_popup()
@@ -340,7 +360,7 @@ func _on_tween_skeleton_about_to_popup() -> void:
 				var popup_submenu = PopupMenu.new()
 				populate_popup(popup_submenu)
 				popup.add_submenu_node_item(str("Frame ", frame_idx + 1), popup_submenu)
-				popup_submenu.id_pressed.connect(
+				popup_submenu.index_pressed.connect(
 					tween_skeleton_data.bind(frame_idx, popup_submenu, skeleton_manager.current_frame)
 				)
 
@@ -386,13 +406,13 @@ func populate_popup(popup: PopupMenu, reset_properties := {}):
 						break
 
 
-func get_selected_bone_names(popup: PopupMenu, bone_id: int) -> PackedStringArray:
+func get_selected_bone_names(popup: PopupMenu, bone_index: int) -> PackedStringArray:
 	var frame_bones: Array = skeleton_manager.group_names_ordered
 	var bone_names = PackedStringArray()
-	if bone_id == 0: # All bones
+	if bone_index == 0: # All bones
 		bone_names = frame_bones
 	else:
-		var bone_name: String = popup.get_item_text(bone_id)
+		var bone_name: String = popup.get_item_text(bone_index)
 		bone_names.append(bone_name)
 		if _include_children:
 			for bone_key: String in frame_bones:
