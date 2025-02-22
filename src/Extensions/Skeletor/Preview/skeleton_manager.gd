@@ -449,8 +449,10 @@ func layer_name_changed(layer, old_name: String) -> void:
 	elif layer.get_layer_type() == 1:
 		if is_sane(api.project.current_project):
 			if old_name in current_frame_data.keys():
-				var rename_bone: SkeletonGizmo = current_frame_bones[old_name]
-				rename_bone.bone_name = layer.name
+				if old_name in current_frame_bones.keys():
+					# Needed if bones have been generated for this frame
+					var rename_bone: SkeletonGizmo = current_frame_bones[old_name]
+					rename_bone.bone_name = layer.name
 				var rename_data: Dictionary = current_frame_data[old_name]
 				current_frame_data.erase(old_name)
 				rename_data["bone_name"] = layer.name

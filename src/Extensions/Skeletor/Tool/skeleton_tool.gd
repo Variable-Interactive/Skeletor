@@ -374,8 +374,10 @@ func populate_popup(popup: PopupMenu, reset_properties := {}):
 			if bone.parent_bone_name == "" and items_added_after_prev_separator:  ## Root nodes
 				popup.add_separator(str("Root:", bone.bone_name))
 				items_added_after_prev_separator = false
+			# NOTE: root node may or may not get added to list but we still need a separator
 			if reset_properties.is_empty():
 				popup.add_item(bone.bone_name)
+				items_added_after_prev_separator = true
 			else:
 				for property: String in reset_properties.keys():
 					if bone.get(property) != reset_properties[property]:
