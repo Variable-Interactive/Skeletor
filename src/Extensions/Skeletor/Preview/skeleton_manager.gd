@@ -3,6 +3,7 @@ extends Node2D
 var api: Node
 var global: Node
 var selected_gizmo: SkeletonGizmo
+var group_names_ordered: PackedStringArray
 ## A Dictionary of bone names as keys and their "Gizmo" as values.
 var current_frame_bones: Dictionary
 ## A Dictionary with Bone names as keys and their "Data Dictionary" as values.
@@ -236,11 +237,13 @@ func update_frame_data() -> void:
 
 func generate_heirarchy(old_data: Dictionary) -> void:
 	var invalid_layer_names := old_data.keys()
+	group_names_ordered.clear()
 	for layer in api.project.current_project.layers:
 		if !pose_layer and layer.get_layer_type() == 0:  ## If user deleted a pose layer then find new one
 			if "Pose Layer" in layer.name:
 				pose_layer = layer
 		elif layer.get_layer_type() == 1:  # GroupLayer
+			group_names_ordered.insert(0, layer.name)
 			var parent_name = ""
 			if layer.parent:
 				parent_name = layer.parent.name
