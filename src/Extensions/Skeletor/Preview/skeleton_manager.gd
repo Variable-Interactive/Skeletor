@@ -304,20 +304,23 @@ func generate_pose(for_frame := current_frame) -> void:
 	for i in project.layers.size():
 		var ordered_index = project.ordered_layers[i]
 		var layer = project.layers[ordered_index]
-		if layer == pose_layer:
-			continue
+		var group_layer = layer.parent
 		# Ignore visibility for group layers
-		var include := false if (!layer.visible and layer.get_layer_type() != 1) else true
 		var cel = frame.cels[ordered_index]
 		var cel_image: Image
+		if layer == pose_layer or not is_instance_valid(group_layer):
+			_set_layer_metadata_image(layer, cel, metadata_image, ordered_index, false)
+			continue
+
+		var include := false if (!layer.visible and layer.get_layer_type() != 1) else true
 		if layer.is_blender():
 			cel_image = layer.blend_children(frame)
 		else:
 			cel_image = layer.display_effects(cel)
 
-		var group_layer = layer.parent
 		if is_instance_valid(group_layer):
 			_apply_bone(gen, group_layer.name, cel_image, for_frame)
+
 		textures.append(cel_image)
 		if (
 			layer.is_blended_by_ancestor()
@@ -750,11 +753,12 @@ func load_frame_info(project, frame_number:= current_frame) -> Dictionary:
 			)
 			if typeof(data) == TYPE_STRING:
 				data = str_to_var(data)
-			if typeof(data) == TYPE_DICTIONARY:  ## Successful conversion
+			if typeof(data) == TYPE_DICTIONARY:  # Successful conversion
+				# At the cost of some performance, go through a failsafe first
 				for bone in data.keys():
 					for bone_data in data[bone].keys():
 						if typeof(data[bone][bone_data]) == TYPE_STRING:
-							if str_to_var(data[bone][bone_data]):  ## Succesful sub-data conversion
+							if str_to_var(data[bone][bone_data]):  # Succesful sub-data conversion
 								data[bone][bone_data] = str_to_var(data[bone][bone_data])
 				return data
 	return {}
