@@ -238,10 +238,10 @@ func copy_bone_data(bone_id: int, from_frame: int, popup: PopupMenu, old_current
 		copy_pose_from.get_popup().clear(true)  # To save Memory
 
 
-func refresh_pose(frame_index: int):
+func refresh_pose(refresh_mode: int):
 	if skeleton_manager:
-		var frames := [frame_index - 2]
-		if frame_index == 0:  # All frames
+		var frames := [skeleton_manager.current_frame]
+		if refresh_mode == 0:  # All frames
 			frames = range(0, api.project.current_project.frames.size())
 		for frame_idx in frames:
 			skeleton_manager.generate_pose(frame_idx)
@@ -323,23 +323,36 @@ func _on_position_reset_menu_about_to_popup() -> void:
 func _on_copy_pose_from_about_to_popup() -> void:
 	var popup := copy_pose_from.get_popup()
 	popup.clear(true)
+	if !skeleton_manager:
+		return
+	var project = api.project.current_project
+	var reference_bone_data: Dictionary = skeleton_manager.current_frame_data
 	for frame_idx in api.project.current_project.frames.size():
 		if skeleton_manager.current_frame == frame_idx:
+			# It won't make a difference if we skip it or not (as the system will autoatically)
+			# skip it anyway (but it's bet to skip it ourselves to avoid unnecessary calculations)
 			continue
-		var popup_submenu = PopupMenu.new()
-		populate_popup(popup_submenu)
-		popup.add_submenu_node_item(str("Frame ", frame_idx + 1), popup_submenu)
-		popup_submenu.index_pressed.connect(
-			copy_bone_data.bind(frame_idx, popup_submenu, skeleton_manager.current_frame)
-		)
+		var frame_data: Dictionary = skeleton_manager.load_frame_info(project, frame_idx)
+		if (
+			frame_data != skeleton_manager.current_frame_data  # Different pose detected
+		):
+			if reference_bone_data != frame_data:  # Checks if this pose is already added to list
+				reference_bone_data = frame_data  # Mark this pose as seen
+				var popup_submenu = PopupMenu.new()
+				popup_submenu.about_to_popup.connect(
+					populate_popup.bind(popup_submenu, reference_bone_data)
+				)
+				popup.add_submenu_node_item(str("Frame ", frame_idx + 1), popup_submenu)
+				popup_submenu.index_pressed.connect(
+					copy_bone_data.bind(frame_idx, popup_submenu, skeleton_manager.current_frame)
+				)
 
 func _on_force_refresh_pose_about_to_popup() -> void:
 	var popup := force_refresh_pose.get_popup()
 	popup.clear(true)
 	popup.add_item("All Frames")
 	popup.add_separator()
-	for frame_idx in api.project.current_project.frames.size():
-		popup.add_item(str("Frame ", frame_idx + 1))
+	popup.add_item(str("Current Frame"))
 
 
 func _on_tween_skeleton_about_to_popup() -> void:
@@ -347,18 +360,20 @@ func _on_tween_skeleton_about_to_popup() -> void:
 	var project = api.project.current_project
 	popup.clear(true)
 	popup.add_separator("Start From")
-	var reference_point_data: Dictionary = skeleton_manager.current_frame_data
+	var reference_bone_data: Dictionary = skeleton_manager.current_frame_data
 	for frame_idx in api.project.current_project.frames.size():
 		if frame_idx >= skeleton_manager.current_frame - 1:
 			break
 		var frame_data: Dictionary = skeleton_manager.load_frame_info(project, frame_idx)
 		if (
-			frame_data != skeleton_manager.current_frame_data
+			frame_data != skeleton_manager.current_frame_data  # Different pose detected
 		):
-			if reference_point_data != frame_data:
-				reference_point_data = frame_data
+			if reference_bone_data != frame_data:  # Checks if this pose is already added to list
+				reference_bone_data = frame_data  # Mark this pose as seen
 				var popup_submenu = PopupMenu.new()
-				populate_popup(popup_submenu)
+				popup_submenu.about_to_popup.connect(
+					populate_popup.bind(popup_submenu, reference_bone_data)
+				)
 				popup.add_submenu_node_item(str("Frame ", frame_idx + 1), popup_submenu)
 				popup_submenu.index_pressed.connect(
 					tween_skeleton_data.bind(frame_idx, popup_submenu, skeleton_manager.current_frame)
@@ -382,28 +397,35 @@ func _on_live_update_pressed(toggled_on: bool) -> void:
 	save_config()
 
 
-func populate_popup(popup: PopupMenu, reset_properties := {}):
+func populate_popup(popup: PopupMenu, reference_properties := {}):
 	popup.clear()
+	if !skeleton_manager:
+		return
 	if skeleton_manager.group_names_ordered.is_empty():
 		return
 	popup.add_item("All Bones")
 	var items_added_after_prev_separator := true
 	for bone_key in skeleton_manager.group_names_ordered:
+		var bone_reset_reference = reference_properties
 		if bone_key in skeleton_manager.current_frame_bones.keys():
 			var bone = skeleton_manager.current_frame_bones[bone_key]
 			if bone.parent_bone_name == "" and items_added_after_prev_separator:  ## Root nodes
 				popup.add_separator(str("Root:", bone.bone_name))
 				items_added_after_prev_separator = false
 			# NOTE: root node may or may not get added to list but we still need a separator
-			if reset_properties.is_empty():
+			if bone_reset_reference.is_empty():
 				popup.add_item(bone.bone_name)
 				items_added_after_prev_separator = true
 			else:
-				for property: String in reset_properties.keys():
-					if bone.get(property) != reset_properties[property]:
+				if bone_key in reference_properties.keys():
+					bone_reset_reference = reference_properties[bone_key]
+				for property: String in bone_reset_reference.keys():
+					if bone.get(property) != bone_reset_reference[property]:
 						popup.add_item(bone.bone_name)
 						items_added_after_prev_separator = true
 						break
+	if popup.is_item_separator(popup.item_count - 1):
+		popup.remove_item(popup.item_count - 1)
 
 
 func get_selected_bone_names(popup: PopupMenu, bone_index: int) -> PackedStringArray:

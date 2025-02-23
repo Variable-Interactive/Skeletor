@@ -279,6 +279,8 @@ func generate_pose(for_frame := current_frame) -> void:
 		return
 	if not pose_layer.visible:  # Pose Layer is invisible (So generating is a waste of time)
 		return
+	if for_frame == -1:  # for_frame is not defined
+		return
 	manage_signals(true)  # Trmporarily disconnect signals
 	var image = Image.create_empty(project.size.x, project.size.y, false, Image.FORMAT_RGBA8)
 	if current_frame_data.is_empty():  # No pose to generate (This is a kind of failsafe)
