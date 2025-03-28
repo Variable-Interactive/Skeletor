@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3 uid="uid://dmm1oev1lo72t"]
 
-[ext_resource type="Script" path="res://src/Extensions/Skeletor/Tool/skeleton_tool.gd" id="1_wwq80"]
+[ext_resource type="Script" uid="uid://b3csbf4ntlddk" path="res://src/Extensions/Skeletor/Tool/skeleton_tool.gd" id="1_wwq80"]
 
 [node name="SkeletonTool" type="VBoxContainer"]
 offset_right = 177.0

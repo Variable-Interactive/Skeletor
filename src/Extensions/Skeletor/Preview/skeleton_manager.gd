@@ -239,7 +239,7 @@ func generate_heirarchy(old_data: Dictionary) -> void:
 	group_names_ordered.clear()
 	for layer in api.project.current_project.layers:
 		if !pose_layer and layer.get_layer_type() == 0:  ## If user deleted a pose layer then find new one
-			if "Pose Layer" in layer.name:
+			if "Pose Layer" in layer.name.capitalize():
 				pose_layer = layer
 		elif layer.get_layer_type() == 1:  # GroupLayer
 			group_names_ordered.insert(0, layer.name)
@@ -444,7 +444,7 @@ func project_layers_moved() -> void:
 
 func layer_name_changed(layer, old_name: String) -> void:
 	if layer.get_layer_type() == 0 and not is_sane(api.project.current_project):
-		if "Pose Layer" in layer.name:
+		if "Pose Layer" in layer.name.capitalize():
 			pose_layer = layer
 			update_frame_data()
 			return
@@ -606,7 +606,7 @@ func _apply_bone(gen, bone_name: String, cel_image: Image, at_frame := current_f
 		else:
 			gen.generate_image(
 				square_image,
-				api.general.get_drawing_algos().omniscale_shader,
+				api.general.get_drawing_algos().nn_shader,
 				rotate_params, square_image.get_size()
 			)
 			bone_cache.clear()

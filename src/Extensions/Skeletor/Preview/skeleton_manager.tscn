@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3 uid="uid://7agw0vk8k8i"]
 
-[ext_resource type="Script" path="res://src/Extensions/Skeletor/Preview/skeleton_manager.gd" id="1_l7ijm"]
+[ext_resource type="Script" uid="uid://bsups5of67tdx" path="res://src/Extensions/Skeletor/Preview/skeleton_manager.gd" id="1_l7ijm"]
 
 [node name="SkeletonPreview" type="Node2D"]
 script = ExtResource("1_l7ijm")
