@@ -44,7 +44,7 @@ https://github.com/user-attachments/assets/3f2f8328-a181-4533-80fe-db4521b1140d
 ## Controls (parts of the bone):
 The extension gives you access to a new **Skeleton** tool (![Tool Image](https://github.com/user-attachments/assets/6002d741-87f9-42b2-9aee-acbb61bc91c0))
 
-1. ***The bigger circle** is the pivot, the image of the bone will rotate around this pivot. The pivot is set by hovering over the circle then hold (`Ctrl` + `Left/Right` click) key and move the mouse. Also, moving the pivot using (`Left/Right` click) will move the image instead of setting pivot.
+1. **The bigger circle** is the pivot, the image of the bone will rotate around this pivot. The pivot is set by hovering over the circle then hold (`Ctrl` + `Left/Right` click) key and move the mouse. Also, moving the pivot using (`Left/Right` click) will move the image instead of setting pivot.
 2. **Smaller circle** controls rotation. Hold (`Ctrl` + `Left/Right` click) with mouse movement to move the circle without rotating the image (this is just to move it somewhere more comfortable). Holding (`Left/Right` click) and mouse movement Will rotate image.
 3. **The solid line** joining the two circles does the same as the above (however the width of the line won't change this time).
 
