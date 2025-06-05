@@ -690,6 +690,7 @@ func manage_layer_visibility() -> void:
 func assign_pose_layer(layer) -> void:
 	if layer:
 		layer.set_meta("SkeletorPoseLayer", true)
+		layer.set("ui_color", Color(0, 1, 0, 0.5))
 		if pose_layer.visibility_changed.is_connected(generate_pose):
 			pose_layer.visibility_changed.disconnect(generate_pose)
 
