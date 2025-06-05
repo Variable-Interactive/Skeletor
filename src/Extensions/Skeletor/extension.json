@@ -6,5 +6,5 @@
 "name": "Skeletor",
 "nodes": ["Main.tscn"],
 "supported_api_versions": [6],
-"version": "0.1"
+"version": "0.11"
 }

@@ -329,6 +329,8 @@ func generate_pose(for_frame := current_frame) -> void:
 		_set_layer_metadata_image(layer, cel, metadata_image, ordered_index, include)
 
 	var texture_array := Texture2DArray.new()
+	if textures.is_empty():
+		return
 	texture_array.create_from_images(textures)
 	var params := {
 		"layers": texture_array,
