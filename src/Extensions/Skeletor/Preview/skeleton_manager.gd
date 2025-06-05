@@ -565,7 +565,7 @@ func _apply_bone(gen, bone_name: String, cel_image: Image, at_frame := current_f
 	var start_point: Vector2i = bone_info.get("start_point", Vector2i.ZERO)
 	var gizmo_origin := Vector2i(bone_info.get("gizmo_origin", Vector2.ZERO))
 	var angle: float = bone_info.get("bone_rotation", 0)
-	if bone_info.get("bone_rotation", 0) == 0 and start_point == Vector2i.ZERO:
+	if angle == 0 and start_point == Vector2i.ZERO:
 		return
 	if used_region.size == Vector2i.ZERO:
 		return
@@ -583,12 +583,12 @@ func _apply_bone(gen, bone_name: String, cel_image: Image, at_frame := current_f
 		Rect2i(used_region.position - s_offset, Vector2i(diagonal_length, diagonal_length))
 	)
 	# Apply Rotation To this Image
-	if bone_info.get("bone_rotation", 0) != 0:
-		var transformation_matrix := Transform2D(bone_info.get("bone_rotation", 0), Vector2.ZERO)
+	if angle != 0:
+		var transformation_matrix := Transform2D(angle, Vector2.ZERO)
 		var rotate_params := {
-			"transformation_matrix": transformation_matrix,
+			"transformation_matrix": transformation_matrix.affine_inverse(),
 			"pivot": Vector2(0.5, 0.5),
-			"ending_angle": bone_info.get("bone_rotation", 0),
+			"ending_angle": angle,
 			"tolerance": 0,
 			"preview": false
 		}
