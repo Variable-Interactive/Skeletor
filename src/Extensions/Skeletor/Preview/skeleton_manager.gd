@@ -362,7 +362,9 @@ func manage_signals(is_disconnecting := false) -> void:
 	if is_disconnecting:
 		global.layer_vbox.child_order_changed.disconnect(project_layers_moved)
 	else:
-		global.layer_vbox.child_order_changed.connect(project_layers_moved)
+
+		if not global.layer_vbox.is_connected("child_order_changed", project_layers_moved):
+			global.layer_vbox.child_order_changed.connect(project_layers_moved)
 
 
 # Manages connections of signals that have to be re-determined everytime project switches
