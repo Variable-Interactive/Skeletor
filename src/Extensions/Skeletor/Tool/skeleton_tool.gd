@@ -67,6 +67,8 @@ func _ready() -> void:
 		%BoneProps.add_child(_rot_slider)
 
 		api.signals.signal_cel_switched(display_props)
+		api.signals.signal_project_switched(display_props)
+		api.signals.signal_project_data_changed(_on_project_data_changed)
 
 	quick_set_bones_menu.get_popup().index_pressed.connect(quick_set_bones)
 	rotation_reset_menu.get_popup().index_pressed.connect(reset_bone_angle)
@@ -124,6 +126,8 @@ func _exit_tree() -> void:
 		skeleton_manager.queue_redraw()
 	if api:
 		api.signals.signal_cel_switched(display_props, true)
+		api.signals.signal_project_switched(display_props, true)
+		api.signals.signal_project_data_changed(_on_project_data_changed, true)
 
 
 func draw_start(_pos: Vector2i) -> void:
@@ -534,7 +538,10 @@ func display_props():
 	if _rot_slider.value_changed.is_connected(_on_rotation_changed):  # works for both signals
 		_rot_slider.value_changed.disconnect(_on_rotation_changed)
 		_pos_slider.value_changed.disconnect(_on_position_changed)
-	if current_selected_bone in skeleton_manager.current_frame_bones.values():
+	if (
+		current_selected_bone in skeleton_manager.current_frame_bones.values()
+		and skeleton_manager.current_frame == api.project.current_project.current_frame
+	):
 		%BoneProps.visible = true
 		%BoneLabel.text = tr("Name:") + " " + current_selected_bone.bone_name
 		_rot_slider.value = rad_to_deg(current_selected_bone.bone_rotation)
@@ -545,6 +552,10 @@ func display_props():
 		_pos_slider.value_changed.connect(_on_position_changed)
 	else:
 		%BoneProps.visible = false
+
+
+func _on_project_data_changed(_project):
+	display_props()
 
 
 ## Placeholder functions that are a necessity to be here
