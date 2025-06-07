@@ -17,6 +17,9 @@ var _displace_offset := Vector2.ZERO
 var _prev_mouse_position := Vector2.INF
 var _distance_to_parent: float = 0
 var _chained_gizmo = null
+var current_selected_bone: RefCounted
+var _rot_slider: TextureProgressBar
+var _pos_slider: HBoxContainer
 
 @onready var quick_set_bones_menu: MenuButton = $QuickSetBones
 @onready var rotation_reset_menu: MenuButton = $RotationReset
@@ -38,6 +41,33 @@ func _ready() -> void:
 		else:
 			$ColorRect.color = api.general.get_global().right_tool_color
 		$Label.text = "Skeleton Options"
+
+		_pos_slider = api.general.create_value_slider_v2()
+		_pos_slider.allow_greater = true
+		_pos_slider.allow_lesser = true
+		_pos_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_pos_slider.suffix_x = "px"
+		_pos_slider.suffix_y = "px"
+		_pos_slider.min_value = Vector2.ZERO
+		_pos_slider.max_value = Vector2(100, 100)
+		_pos_slider.name = "BonePositionSlider"
+		%BoneProps.add_child(_pos_slider)
+
+		_rot_slider = api.general.create_value_slider()
+		_rot_slider.allow_greater = true
+		_rot_slider.allow_lesser = true
+		_rot_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_rot_slider.prefix = tr("Rotation:")
+		_rot_slider.suffix = "°"
+		_rot_slider.min_value = 0
+		_rot_slider.max_value = 360
+		_rot_slider.step = 0.01
+		_rot_slider.name = "BoneRotationSlider"
+		_rot_slider.custom_minimum_size.y = 24.0
+		%BoneProps.add_child(_rot_slider)
+
+		api.signals.signal_cel_switched(display_props)
+
 	quick_set_bones_menu.get_popup().index_pressed.connect(quick_set_bones)
 	rotation_reset_menu.get_popup().index_pressed.connect(reset_bone_angle)
 	position_reset_menu.get_popup().index_pressed.connect(reset_bone_position)
@@ -92,6 +122,8 @@ func _exit_tree() -> void:
 	if skeleton_manager:
 		skeleton_manager.announce_tool_removal(self)
 		skeleton_manager.queue_redraw()
+	if api:
+		api.signals.signal_cel_switched(display_props, true)
 
 
 func draw_start(_pos: Vector2i) -> void:
@@ -102,25 +134,26 @@ func draw_start(_pos: Vector2i) -> void:
 		return
 	skeleton_manager.transformation_active = true
 	is_transforming = true
-	var gizmo = skeleton_manager.selected_gizmo
+	current_selected_bone = skeleton_manager.selected_gizmo
 	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
-	if !gizmo:
+	if !current_selected_bone:
 		return
-	if gizmo.modify_mode == NONE:
-		# When moving mouse we may stop hovering but we are still modifying that gizmo.
+	if current_selected_bone.modify_mode == NONE:
+		# When moving mouse we may stop hovering but we are still modifying that bone.
 		# this is why we need a sepatate modify_mode variable
-		gizmo.modify_mode = gizmo.hover_mode(
+		current_selected_bone.modify_mode = current_selected_bone.hover_mode(
 			Vector2(mouse_point), api.general.get_global().camera.zoom
 		)
 	if _prev_mouse_position == Vector2.INF:
-		_displace_offset = gizmo.rel_to_start_point(mouse_point)
+		_displace_offset = current_selected_bone.rel_to_start_point(mouse_point)
 		_prev_mouse_position = mouse_point
 	# Check if bone is a parent of anything (skip if it is)
-	if _allow_chaining and gizmo.parent_bone_name in skeleton_manager.current_frame_bones.keys():
-		var parent_bone = skeleton_manager.current_frame_bones[gizmo.parent_bone_name]
-		var bone_start: Vector2i = gizmo.rel_to_global(gizmo.start_point)
+	if _allow_chaining and current_selected_bone.parent_bone_name in skeleton_manager.current_frame_bones.keys():
+		var parent_bone = skeleton_manager.current_frame_bones[current_selected_bone.parent_bone_name]
+		var bone_start: Vector2i = current_selected_bone.rel_to_global(current_selected_bone.start_point)
 		var parent_start: Vector2i = parent_bone.rel_to_global(parent_bone.start_point)
 		_distance_to_parent = bone_start.distance_to(parent_start)
+	display_props()
 
 
 func draw_move(_pos: Vector2i) -> void:
@@ -132,38 +165,37 @@ func draw_move(_pos: Vector2i) -> void:
 	# We need mouse_point to be a Vector2 in order for rotation to work properly.
 	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
 	var offset := mouse_point - _prev_mouse_position
-	var gizmo = skeleton_manager.selected_gizmo
-	if !gizmo:
+	if !current_selected_bone:
 		return
-	if _allow_chaining and gizmo.parent_bone_name in skeleton_manager.current_frame_bones.keys():
-		match gizmo.modify_mode:  # This manages chaining
+	if _allow_chaining and current_selected_bone.parent_bone_name in skeleton_manager.current_frame_bones.keys():
+		match current_selected_bone.modify_mode:  # This manages chaining
 			DISPLACE:
-				_chained_gizmo = gizmo
-				gizmo = skeleton_manager.current_frame_bones[gizmo.parent_bone_name]
-				gizmo.modify_mode = ROTATE
-				skeleton_manager.selected_gizmo = gizmo
+				_chained_gizmo = current_selected_bone
+				current_selected_bone = skeleton_manager.current_frame_bones[current_selected_bone.parent_bone_name]
+				current_selected_bone.modify_mode = ROTATE
+				skeleton_manager.selected_gizmo = current_selected_bone
 				_chained_gizmo.modify_mode = NONE
-	if gizmo.modify_mode == DISPLACE:
+	if current_selected_bone.modify_mode == DISPLACE:
 		if Input.is_key_pressed(KEY_CTRL):
 			skeleton_manager.ignore_render_once = true
-			gizmo.gizmo_origin += offset.rotated(-gizmo.bone_rotation)
-		gizmo.start_point = Vector2i(gizmo.rel_to_origin(mouse_point) - _displace_offset)
+			current_selected_bone.gizmo_origin += offset.rotated(-current_selected_bone.bone_rotation)
+		current_selected_bone.start_point = Vector2i(current_selected_bone.rel_to_origin(mouse_point) - _displace_offset)
 	elif (
-		gizmo.modify_mode == ROTATE
-		or gizmo.modify_mode == SCALE
+		current_selected_bone.modify_mode == ROTATE
+		or current_selected_bone.modify_mode == SCALE
 	):
-		var localized_mouse_norm: Vector2 = gizmo.rel_to_start_point(mouse_point).normalized()
-		var localized_prev_mouse_norm: Vector2 = gizmo.rel_to_start_point(
+		var localized_mouse_norm: Vector2 = current_selected_bone.rel_to_start_point(mouse_point).normalized()
+		var localized_prev_mouse_norm: Vector2 = current_selected_bone.rel_to_start_point(
 			_prev_mouse_position
 		).normalized()
 		var diff := localized_mouse_norm.angle_to(localized_prev_mouse_norm)
 		if Input.is_key_pressed(KEY_CTRL):
 			skeleton_manager.ignore_render_once = true
-			gizmo.gizmo_rotate_origin -= diff
-			if gizmo.modify_mode == SCALE:
-				gizmo.gizmo_length = gizmo.rel_to_start_point(mouse_point).length()
+			current_selected_bone.gizmo_rotate_origin -= diff
+			if current_selected_bone.modify_mode == SCALE:
+				current_selected_bone.gizmo_length = current_selected_bone.rel_to_start_point(mouse_point).length()
 		else:
-			gizmo.bone_rotation -= diff
+			current_selected_bone.bone_rotation -= diff
 			if _allow_chaining and _chained_gizmo:
 				_chained_gizmo.bone_rotation += diff
 	if _live_update:
@@ -175,6 +207,7 @@ func draw_move(_pos: Vector2i) -> void:
 				if error != OK:  # Thread failed, so do this the hard way.
 					skeleton_manager.generate_pose()
 	_prev_mouse_position = mouse_point
+	display_props()
 
 
 func draw_end(_pos: Vector2i) -> void:
@@ -187,17 +220,17 @@ func draw_end(_pos: Vector2i) -> void:
 			return
 		is_transforming = false
 		skeleton_manager.transformation_active = false
-		var gizmo = skeleton_manager.selected_gizmo
-		if gizmo:
-			if gizmo.modify_mode != NONE:
+		if current_selected_bone:
+			if current_selected_bone.modify_mode != NONE:
 				skeleton_manager.generate_pose()
 				skeleton_manager.selected_gizmo.modify_mode = NONE
 			if (
 				_allow_chaining
-				and gizmo.parent_bone_name in skeleton_manager.current_frame_bones.keys()
+				and current_selected_bone.parent_bone_name in skeleton_manager.current_frame_bones.keys()
 			):
-				if gizmo.modify_mode == DISPLACE:
-					skeleton_manager.current_frame_bones[gizmo.parent_bone_name].modify_mode = NONE
+				if current_selected_bone.modify_mode == DISPLACE:
+					skeleton_manager.current_frame_bones[current_selected_bone.parent_bone_name].modify_mode = NONE
+	display_props()
 
 
 func quick_set_bones(bone_id: int):
@@ -296,13 +329,29 @@ func reset_bone_angle(bone_id: int):
 
 
 func reset_bone_position(bone_id: int):
-	## This rotation will also rotate the child bones as the parent bone's angle is changed.
 	var bone_names := get_selected_bone_names(position_reset_menu.get_popup(), bone_id)
 	for bone_name in bone_names:
 		if bone_name in skeleton_manager.current_frame_bones.keys():
 			skeleton_manager.current_frame_bones[bone_name].start_point = Vector2.ZERO
 	skeleton_manager.queue_redraw()
 	skeleton_manager.generate_pose()
+
+
+func _on_rotation_changed(value: float):
+	## This rotation will also rotate the child bones as the parent bone's angle is changed.
+	if current_selected_bone:
+		if current_selected_bone in skeleton_manager.current_frame_bones.values():
+			current_selected_bone.bone_rotation = deg_to_rad(value)
+			skeleton_manager.queue_redraw()
+			skeleton_manager.generate_pose()
+
+
+func _on_position_changed(value: Vector2):
+	if current_selected_bone:
+		if current_selected_bone in skeleton_manager.current_frame_bones.values():
+			current_selected_bone.start_point = current_selected_bone.rel_to_origin(value).ceil()
+			skeleton_manager.queue_redraw()
+			skeleton_manager.generate_pose()
 
 
 func _on_quick_set_bones_menu_about_to_popup() -> void:
@@ -479,6 +528,23 @@ func cursor_move(pos: Vector2i) -> void:
 				skeleton_manager.update_frame_data()
 				break
 		skeleton_manager.queue_redraw()
+
+
+func display_props():
+	if _rot_slider.value_changed.is_connected(_on_rotation_changed):  # works for both signals
+		_rot_slider.value_changed.disconnect(_on_rotation_changed)
+		_pos_slider.value_changed.disconnect(_on_position_changed)
+	if current_selected_bone in skeleton_manager.current_frame_bones.values():
+		%BoneProps.visible = true
+		%BoneLabel.text = tr("Name:") + " " + current_selected_bone.bone_name
+		_rot_slider.value = rad_to_deg(current_selected_bone.bone_rotation)
+		_pos_slider.value = current_selected_bone.rel_to_global(
+			current_selected_bone.start_point
+		)
+		_rot_slider.value_changed.connect(_on_rotation_changed)
+		_pos_slider.value_changed.connect(_on_position_changed)
+	else:
+		%BoneProps.visible = false
 
 
 ## Placeholder functions that are a necessity to be here

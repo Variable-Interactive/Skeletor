@@ -17,6 +17,27 @@ theme_type_variation = &"HeaderSmall"
 text = "Tool Name"
 horizontal_alignment = 1
 
+[node name="BoneProps" type="VBoxContainer" parent="."]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+
+[node name="Section3" type="HBoxContainer" parent="BoneProps"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="BoneProps/Section3"]
+layout_mode = 2
+text = "Bone properties"
+
+[node name="HSeparator" type="HSeparator" parent="BoneProps/Section3"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="BoneLabel" type="Label" parent="BoneProps"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Name:"
+
 [node name="Section3" type="HBoxContainer" parent="."]
 layout_mode = 2
 
@@ -65,8 +86,14 @@ text = "Allow Chaining"
 [node name="IncludeChildrenCheckbox" type="CheckBox" parent="GridContainer"]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "Transformations applied through the buttons below
-will also apply on the children."
+tooltip_text = "Manipulations done through the buttons below
+will also propagate down the child bones one by one.
+
+Note that transformations are done to children redardless of
+the state of this checkbox. For example resetting a bone with
+this checkbox enabled will reset it's children as well, otherwise
+the children will just move/rotate according to new state of the
+bone"
 button_pressed = true
 
 [node name="Label2" type="Label" parent="GridContainer"]
