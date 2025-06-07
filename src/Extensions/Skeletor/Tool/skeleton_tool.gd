@@ -234,6 +234,7 @@ func draw_end(_pos: Vector2i) -> void:
 			):
 				if current_selected_bone.modify_mode == DISPLACE:
 					skeleton_manager.current_frame_bones[current_selected_bone.parent_bone_name].modify_mode = NONE
+	api.project.current_project.has_changed = true
 	display_props()
 
 
