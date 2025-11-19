@@ -1,6 +1,8 @@
 extends VBoxContainer
 
+enum IKAlgorithms { FABRIK, CCDIK }
 enum {NONE, DISPLACE, ROTATE, SCALE}  ## same as the one in SkeletonGizmo class
+
 var api: Node
 var tool_slot
 var kname: String
@@ -12,6 +14,11 @@ var live_thread := Thread.new()
 
 var _live_update := false
 var _allow_chaining := false
+var _use_ik := true
+var _ik_protocol: int = IKAlgorithms.FABRIK
+var _chain_length: int = 20
+var _max_ik_itterations: int = 20
+var _ik_error_margin: float = 0.1
 var _include_children := true
 var _displace_offset := Vector2.ZERO
 var _prev_mouse_position := Vector2.INF
@@ -27,6 +34,177 @@ var _pos_slider: HBoxContainer
 @onready var copy_pose_from: MenuButton = $CopyPoseFrom
 @onready var force_refresh_pose: MenuButton = $ForceRefreshPose
 @onready var tween_skeleton_menu: MenuButton = $TweenSkeleton
+@onready var ik_options: VBoxContainer = %IKOptions
+
+
+
+class FABRIK:
+	# Initial Implementation by:
+	# https://github.com/nezvers/Godot_Public_Examples/blob/master/Nature_code/Kinematics/FABRIK.gd
+	# see https://www.youtube.com/watch?v=Ihp6tOCYHug for an intuitive explanation.
+	static func calculate(
+		bone_chain: Array[RefCounted],
+		target_pos: Vector2,
+		max_itterations: int,
+		error_margin: float
+	) -> bool:
+		var pos_list := PackedVector2Array()
+		var lenghts := PackedFloat32Array()
+		var total_length: float = 0
+		for i in bone_chain.size() - 1:
+			var p_1 := _get_global_start(bone_chain[i])
+			var p_2 := _get_global_start(bone_chain[i + 1])
+			pos_list.append(p_1)
+			if i == bone_chain.size() - 2:
+				pos_list.append(p_2)
+			var l = p_2.distance_to(p_1)
+			lenghts.append(l)
+			total_length += l
+		var old_points = pos_list.duplicate()
+		var start_global = pos_list[0]
+		var end_global = pos_list[pos_list.size() - 1]
+		var distance: float = (target_pos - start_global).length()
+		# out of reach, no point of IK
+		if distance >= total_length or pos_list.size() <= 2:
+			for i in bone_chain.size():
+				var cel := bone_chain[i]
+				if i < bone_chain.size() - 1:
+					# find how much to rotate to bring next start point to mach the one in poslist
+					var cel_start = _get_global_start(cel)
+					var look_old = _get_global_start(bone_chain[i + 1])
+					var look_new = target_pos  # what we should look at
+					# Rotate to look at the next point
+					var angle_diff = (
+						cel_start.angle_to_point(look_new) - cel_start.angle_to_point(look_old)
+					)
+					if !is_equal_approx(angle_diff, 0.0):
+						cel.bone_rotation += angle_diff
+			return true
+		else:
+			var error_dist: float = (target_pos - end_global).length()
+			var itterations := 0
+			# limit the itteration count
+			while error_dist > error_margin && itterations < max_itterations:
+				_backward_reach(pos_list, target_pos, lenghts)  # start at endPos
+				_forward_reach(pos_list, start_global, lenghts)  # start at pinPos
+				error_dist = (target_pos - pos_list[pos_list.size() - 1]).length()
+				itterations += 1
+			if old_points == pos_list:
+				return false
+			for i in bone_chain.size():
+				var cel := bone_chain[i]
+				if i < bone_chain.size() - 1:
+					# find how much to rotate to bring next start point to mach the one in poslist
+					var cel_start = _get_global_start(cel)
+					var next_start_old = _get_global_start(bone_chain[i + 1])  # current situation
+					var next_start_new = pos_list[i + 1]  # what should have been
+					# Rotate to look at the next point
+					var angle_diff = (
+						cel_start.angle_to_point(next_start_new)
+						- cel_start.angle_to_point(next_start_old)
+					)
+					if !is_equal_approx(angle_diff, 0.0):
+						cel.bone_rotation += angle_diff
+			return true
+
+	static func _backward_reach(pos_list: PackedVector2Array, ending: Vector2, lenghts) -> void:
+		var last := pos_list.size() - 1
+		pos_list[last] = ending  # Place the tail of last vector at ending
+		for i in last:
+			var head_of_last: Vector2 = pos_list[last - i]
+			var tail_of_next: Vector2 = pos_list[last - i - 1]
+			var dir: Vector2 = (tail_of_next - head_of_last).normalized()
+			tail_of_next = head_of_last + (dir * lenghts[i - 1])
+			pos_list[last - 1 - i] = tail_of_next
+
+	static func _forward_reach(pos_list: PackedVector2Array, starting: Vector2, lenghts) -> void:
+		pos_list[0] = starting  # Place the tail of first vector at starting
+		for i in pos_list.size() - 1:
+			var head_of_last: Vector2 = pos_list[i]
+			var tail_of_next: Vector2 = pos_list[i + 1]
+			var dir: Vector2 = (tail_of_next - head_of_last).normalized()
+			tail_of_next = head_of_last + (dir * lenghts[i])
+			pos_list[i + 1] = tail_of_next
+
+	static func _get_global_start(bone_gizmo: RefCounted) -> Vector2:
+		return bone_gizmo.rel_to_canvas(bone_gizmo.start_point)
+
+
+class CCDIK:
+	# Inspired from:
+	# https://github.com/chFleschutz/inverse-kinematics-algorithms/blob/main/src/CCD.h
+	static func calculate(
+		bone_chain: Array[RefCounted], target_pos: Vector2, max_iterations: int, error_margin: float
+	) -> bool:
+		var lenghts := PackedFloat32Array()
+		var total_length: float = 0
+		for i in bone_chain.size() - 1:
+			var p_1 := _get_global_start(bone_chain[i])
+			var p_2 := _get_global_start(bone_chain[i + 1])
+			var l = p_2.distance_to(p_1)
+			lenghts.append(l)
+			total_length += l
+		var distance: float = (target_pos - _get_global_start(bone_chain[0])).length()
+		# Check if the target is reachable
+		if total_length < distance:
+			# Stretch
+			for i in bone_chain.size():
+				var cel := bone_chain[i]
+				if i < bone_chain.size() - 1:
+					# find how much to rotate to bring next start point to mach the one in poslist
+					var cel_start = _get_global_start(cel)
+					var look_old = _get_global_start(bone_chain[i + 1])
+					var look_new = target_pos  # what we should look at
+					# Rotate to look at the next point
+					var angle_diff = (
+						cel_start.angle_to_point(look_new) - cel_start.angle_to_point(look_old)
+					)
+					if !is_equal_approx(angle_diff, 0.0):
+						cel.bone_rotation += angle_diff
+			return true
+		for _i in range(max_iterations):
+			# Adjust rotation of each bone in the skeleton
+			for i in range(bone_chain.size() - 2, -1, -1):
+				var pivot_pos = _get_global_start(bone_chain[-1])
+				var current_base_pos = _get_global_start(bone_chain[i])
+				var base_pivot_vec = pivot_pos - current_base_pos
+				var base_target_vec = target_pos - current_base_pos
+
+				# Normalize vectors
+				base_pivot_vec = base_pivot_vec.normalized()
+				base_target_vec = base_target_vec.normalized()
+
+				var dot = base_pivot_vec.dot(base_target_vec)
+				var det = (
+					base_pivot_vec.x * base_target_vec.y - base_pivot_vec.y * base_target_vec.x
+				)
+				var angle_delta = atan2(det, dot)
+				if !is_equal_approx(angle_delta, 0.0):
+					bone_chain[i].bone_rotation += angle_delta
+
+			# Check for convergence
+			var last_cel = bone_chain[bone_chain.size() - 1]
+			if (target_pos - last_cel.rel_to_canvas(last_cel.start_point)).length() < error_margin:
+				return true
+		return true
+
+	static func _get_global_start(bone_gizmo: RefCounted) -> Vector2:
+		return bone_gizmo.rel_to_canvas(bone_gizmo.start_point)
+
+
+## Returns the SkeletonGizmos in the IK chain in order, with the last bone at the end
+func get_ik_cels(start_bone: RefCounted) -> Array[RefCounted]:
+	var bone_chain: Array[RefCounted] = []
+	var i = 0
+	var p = start_bone
+	if skeleton_manager:
+		while p:
+			bone_chain.push_front(p)
+			p = skeleton_manager.current_frame_bones.get(p.parent_bone_name, null)
+			i += 1
+			if i > _chain_length:
+				break
+	return bone_chain
 
 
 func _ready() -> void:
@@ -96,6 +274,11 @@ func get_config() -> Dictionary:
 	var config :Dictionary
 	config["live_update"] = _live_update
 	config["allow_chaining"] = _allow_chaining
+	config["use_ik"] = _use_ik
+	config["ik_protocol"] = _ik_protocol
+	config["chain_length"] = _chain_length
+	config["max_ik_itterations"] = _max_ik_itterations
+	config["ik_error_margin"] = _ik_error_margin
 	config["include_children"] = _include_children
 	return config
 
@@ -103,16 +286,60 @@ func get_config() -> Dictionary:
 func set_config(config: Dictionary) -> void:
 	_live_update = config.get("live_update", _live_update)
 	_allow_chaining = config.get("allow_chaining", _allow_chaining)
+	_use_ik = config.get("use_ik", _use_ik)
+	_ik_protocol = config.get("ik_protocol", _ik_protocol)
+	_chain_length = config.get("chain_length", _chain_length)
+	_max_ik_itterations = config.get("max_ik_itterations", _max_ik_itterations)
+	_ik_error_margin = config.get("ik_error_margin", _ik_error_margin)
 	_include_children = config.get("include_children", _include_children)
 
 
 func update_config() -> void:
 	%LiveUpdateCheckbox.button_pressed = _live_update
 	%AllowChaining.button_pressed = _allow_chaining
+	%InverseKinematics.set_pressed_no_signal(_use_ik)
+	%AlgorithmOption.select(_ik_protocol)
+	### Use valuesliders later
+	#%ChainSize.set_value_no_signal_update_display(_chain_length)
+	#%IKIterations.set_value_no_signal_update_display(_max_ik_itterations)
+	#%IKErrorMargin.set_value_no_signal_update_display(_ik_error_margin)
+	ik_options.visible = _allow_chaining
 	%IncludeChildrenCheckbox.button_pressed = _include_children
 	if skeleton_manager:
 		skeleton_manager.bones_chained = _allow_chaining
 		skeleton_manager.queue_redraw()
+
+
+func _on_inverse_kinematics_toggled(toggled_on: bool) -> void:
+	_use_ik = toggled_on
+	update_config()
+	save_config()
+
+
+func _on_algorithm_selected(index: int) -> void:
+	_ik_protocol = index
+	update_config()
+	save_config()
+
+
+func _on_chain_size_value_changed(value: float) -> void:
+	@warning_ignore("narrowing_conversion")
+	_chain_length = value
+	update_config()
+	save_config()
+
+
+func _on_ik_iterations_value_changed(value: float) -> void:
+	@warning_ignore("narrowing_conversion")
+	_max_ik_itterations = value
+	update_config()
+	save_config()
+
+
+func _on_ik_error_margin_value_changed(value: float) -> void:
+	_ik_error_margin = value
+	update_config()
+	save_config()
 
 
 func save_config() -> void:
@@ -154,8 +381,8 @@ func draw_start(_pos: Vector2i) -> void:
 	# Check if bone is a parent of anything (skip if it is)
 	if _allow_chaining and current_selected_bone.parent_bone_name in skeleton_manager.current_frame_bones.keys():
 		var parent_bone = skeleton_manager.current_frame_bones[current_selected_bone.parent_bone_name]
-		var bone_start: Vector2i = current_selected_bone.rel_to_global(current_selected_bone.start_point)
-		var parent_start: Vector2i = parent_bone.rel_to_global(parent_bone.start_point)
+		var bone_start: Vector2i = current_selected_bone.rel_to_canvas(current_selected_bone.start_point)
+		var parent_start: Vector2i = parent_bone.rel_to_canvas(parent_bone.start_point)
 		_distance_to_parent = bone_start.distance_to(parent_start)
 	display_props()
 
@@ -166,21 +393,49 @@ func draw_move(_pos: Vector2i) -> void:
 		return
 	if !skeleton_manager:
 		return
+	var is_moving_without_transform = Input.is_key_pressed(KEY_CTRL)
 	# We need mouse_point to be a Vector2 in order for rotation to work properly.
 	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
 	var offset := mouse_point - _prev_mouse_position
 	if !current_selected_bone:
 		return
-	if _allow_chaining and current_selected_bone.parent_bone_name in skeleton_manager.current_frame_bones.keys():
+	if (
+		_allow_chaining
+		and current_selected_bone.parent_bone_name in skeleton_manager.current_frame_bones.keys()
+		and not is_moving_without_transform
+	):
 		match current_selected_bone.modify_mode:  # This manages chaining
 			DISPLACE:
-				_chained_gizmo = current_selected_bone
-				current_selected_bone = skeleton_manager.current_frame_bones[current_selected_bone.parent_bone_name]
-				current_selected_bone.modify_mode = ROTATE
-				skeleton_manager.selected_gizmo = current_selected_bone
-				_chained_gizmo.modify_mode = NONE
+				if _use_ik:
+					var update_canvas := true
+					match _ik_protocol:
+						IKAlgorithms.FABRIK:
+							update_canvas = FABRIK.calculate(
+								get_ik_cels(current_selected_bone),
+								mouse_point,
+								_max_ik_itterations,
+								_ik_error_margin
+							)
+						IKAlgorithms.CCDIK:
+							update_canvas = CCDIK.calculate(
+								get_ik_cels(current_selected_bone),
+								mouse_point,
+								_max_ik_itterations,
+								_ik_error_margin
+							)
+					if _live_update and update_canvas:
+						manage_threading_generate_pose()
+					_prev_mouse_position = mouse_point
+					display_props()
+					return  # We don't need to do anything further
+				else:
+					_chained_gizmo = current_selected_bone
+					current_selected_bone = skeleton_manager.current_frame_bones[current_selected_bone.parent_bone_name]
+					current_selected_bone.modify_mode = ROTATE
+					skeleton_manager.selected_gizmo = current_selected_bone
+					_chained_gizmo.modify_mode = NONE
 	if current_selected_bone.modify_mode == DISPLACE:
-		if Input.is_key_pressed(KEY_CTRL):
+		if is_moving_without_transform:
 			skeleton_manager.ignore_render_once = true
 			current_selected_bone.gizmo_origin += offset.rotated(-current_selected_bone.bone_rotation)
 		current_selected_bone.start_point = Vector2i(current_selected_bone.rel_to_origin(mouse_point) - _displace_offset)
@@ -193,7 +448,7 @@ func draw_move(_pos: Vector2i) -> void:
 			_prev_mouse_position
 		).normalized()
 		var diff := localized_mouse_norm.angle_to(localized_prev_mouse_norm)
-		if Input.is_key_pressed(KEY_CTRL):
+		if is_moving_without_transform:
 			skeleton_manager.ignore_render_once = true
 			current_selected_bone.gizmo_rotate_origin -= diff
 			if current_selected_bone.modify_mode == SCALE:
@@ -203,15 +458,19 @@ func draw_move(_pos: Vector2i) -> void:
 			if _allow_chaining and _chained_gizmo:
 				_chained_gizmo.bone_rotation += diff
 	if _live_update:
-		if ProjectSettings.get_setting("rendering/driver/threads/thread_model") != 2:
-			skeleton_manager.generate_pose()
-		else:  # Multi-threaded mode (Currently pixelorama is single threaded)
-			if not live_thread.is_alive():
-				var error := live_thread.start(skeleton_manager.generate_pose)
-				if error != OK:  # Thread failed, so do this the hard way.
-					skeleton_manager.generate_pose()
+		manage_threading_generate_pose()
 	_prev_mouse_position = mouse_point
 	display_props()
+
+
+func manage_threading_generate_pose():
+	if ProjectSettings.get_setting("rendering/driver/threads/thread_model") != 2:
+		skeleton_manager.generate_pose()
+	else:  # Multi-threaded mode (Currently pixelorama is single threaded)
+		if not live_thread.is_alive():
+			var error := live_thread.start(skeleton_manager.generate_pose)
+			if error != OK:  # Thread failed, so do this the hard way.
+				skeleton_manager.generate_pose()
 
 
 func draw_end(_pos: Vector2i) -> void:
@@ -546,7 +805,7 @@ func display_props():
 		%BoneProps.visible = true
 		%BoneLabel.text = tr("Name:") + " " + current_selected_bone.bone_name
 		_rot_slider.value = rad_to_deg(current_selected_bone.bone_rotation)
-		_pos_slider.value = current_selected_bone.rel_to_global(
+		_pos_slider.value = current_selected_bone.rel_to_canvas(
 			current_selected_bone.start_point
 		)
 		_rot_slider.value_changed.connect(_on_rotation_changed)

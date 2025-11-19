@@ -49,9 +49,8 @@ text = "General"
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="GridContainer" type="GridContainer" parent="."]
+[node name="GridContainer" type="VBoxContainer" parent="."]
 layout_mode = 2
-columns = 2
 
 [node name="LiveUpdateCheckbox" type="CheckBox" parent="GridContainer"]
 unique_name_in_owner = true
@@ -60,28 +59,7 @@ tooltip_text = "(Enabled) The update happens continuously
 as the bone is modified
 
 (Disabled) The update only happens at the end of modification."
-
-[node name="Label" type="Label" parent="GridContainer"]
-layout_mode = 2
-tooltip_text = "(Enabled) The update happens continuously
-as the bone is modified
-
-(Disabled) The update only happens at the end of modification."
-mouse_filter = 1
 text = "Live Update (slower)"
-
-[node name="AllowChaining" type="CheckBox" parent="GridContainer"]
-unique_name_in_owner = true
-layout_mode = 2
-tooltip_text = "When enabled, it will be possible to displace bone and
-rotate it's parent at the same time (like a chain)."
-
-[node name="Label3" type="Label" parent="GridContainer"]
-layout_mode = 2
-tooltip_text = "When enabled, it will be possible to displace bone and
-rotate it's parent at the same time (like a chain)."
-mouse_filter = 1
-text = "Allow Chaining"
 
 [node name="IncludeChildrenCheckbox" type="CheckBox" parent="GridContainer"]
 unique_name_in_owner = true
@@ -95,19 +73,63 @@ this checkbox enabled will reset it's children as well, otherwise
 the children will just move/rotate according to new state of the
 bone"
 button_pressed = true
-
-[node name="Label2" type="Label" parent="GridContainer"]
-layout_mode = 2
-tooltip_text = "Manipulations done through the buttons below
-will also propagate down the child bones one by one.
-
-Note that transformations are done to children redardless of
-the state of this checkbox. For example resetting a bone with
-this checkbox enabled will reset it's children as well, otherwise
-the children will just move/rotate according to new state of the
-bone"
-mouse_filter = 1
 text = "Include bone children"
+
+[node name="AllowChaining" type="CheckBox" parent="GridContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "When enabled, it will be possible to displace bone and
+rotate it's parent at the same time (like a chain)."
+text = "Allow Chaining"
+
+[node name="IKOptions" type="VBoxContainer" parent="."]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+
+[node name="InverseKinematics" type="CheckBox" parent="IKOptions"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Use IK"
+
+[node name="Label" type="Label" parent="IKOptions"]
+layout_mode = 2
+text = "Algorithm:"
+
+[node name="AlgorithmOption" type="OptionButton" parent="IKOptions"]
+unique_name_in_owner = true
+layout_mode = 2
+alignment = 1
+selected = 0
+item_count = 2
+popup/item_0/text = "FABRIK"
+popup/item_0/id = 0
+popup/item_1/text = "CCDIK"
+popup/item_1/id = 1
+
+[node name="Label2" type="Label" parent="IKOptions"]
+layout_mode = 2
+text = "Chain Size:"
+
+[node name="ChainSize" type="SpinBox" parent="IKOptions"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="Label3" type="Label" parent="IKOptions"]
+layout_mode = 2
+text = "Iterations:"
+
+[node name="IKIterations" type="SpinBox" parent="IKOptions"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="Label4" type="Label" parent="IKOptions"]
+layout_mode = 2
+text = "ErrorMargin:"
+
+[node name="IKErrorMargin" type="SpinBox" parent="IKOptions"]
+unique_name_in_owner = true
+layout_mode = 2
 
 [node name="Section2" type="HBoxContainer" parent="."]
 layout_mode = 2
@@ -184,8 +206,10 @@ text = "Bone Position"
 flat = false
 
 [connection signal="toggled" from="GridContainer/LiveUpdateCheckbox" to="." method="_on_live_update_pressed"]
-[connection signal="toggled" from="GridContainer/AllowChaining" to="." method="_on_allow_chaining_toggled"]
 [connection signal="toggled" from="GridContainer/IncludeChildrenCheckbox" to="." method="_on_include_children_checkbox_toggled"]
+[connection signal="toggled" from="GridContainer/AllowChaining" to="." method="_on_allow_chaining_toggled"]
+[connection signal="toggled" from="IKOptions/InverseKinematics" to="." method="_on_inverse_kinematics_toggled"]
+[connection signal="item_selected" from="IKOptions/AlgorithmOption" to="." method="_on_algorithm_selected"]
 [connection signal="about_to_popup" from="QuickSetBones" to="." method="_on_quick_set_bones_menu_about_to_popup"]
 [connection signal="about_to_popup" from="CopyPoseFrom" to="." method="_on_copy_pose_from_about_to_popup"]
 [connection signal="about_to_popup" from="ForceRefreshPose" to="." method="_on_force_refresh_pose_about_to_popup"]
