@@ -770,7 +770,10 @@ func load_frame_info(project, frame_number:= current_frame) -> Dictionary:
 			if typeof(data) == TYPE_DICTIONARY:  # Successful conversion
 				# At the cost of some performance, go through a failsafe first
 				for bone in data.keys():
-					for bone_data in data[bone].keys():
+					if data.get(bone, null) == null:
+						data.erase(bone)
+						continue
+					for bone_data in data.get(bone, {}).keys():
 						if typeof(data[bone][bone_data]) == TYPE_STRING:
 							if str_to_var(data[bone][bone_data]):  # Succesful sub-data conversion
 								data[bone][bone_data] = str_to_var(data[bone][bone_data])
