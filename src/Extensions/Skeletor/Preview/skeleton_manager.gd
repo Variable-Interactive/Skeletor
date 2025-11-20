@@ -2,7 +2,14 @@ extends Node2D
 
 var api: Node
 var global: Node
-var selected_gizmo: SkeletonGizmo
+var active_tool: Control
+var hover_gizmo: SkeletonGizmo
+var selected_gizmo: SkeletonGizmo:
+	set(value):
+		if selected_gizmo != value:
+			selected_gizmo = value
+			for tool_node in active_skeleton_tools:
+				tool_node.display_props()
 var group_names_ordered: PackedStringArray
 ## A Dictionary of bone names as keys and their "Gizmo" as values.
 var current_frame_bones: Dictionary
@@ -15,7 +22,6 @@ var prev_frame_count: int = 0
 var assign_pose_button_id: int
 var ignore_render_once := false  ## used to check if we need a new render or not (used in _input())
 var queue_generate := false
-var transformation_active := false
 # The shader is located in pixelorama
 var blend_layer_shader = load("res://src/Shaders/BlendLayers.gdshader")
 var pose_layer:  ## The layer in which a pose is rendered
@@ -26,139 +32,8 @@ var generation_cache: Dictionary
 var active_skeleton_tools := Array()
 
 
-class SkeletonGizmo:
-	## This class is used/created to perform calculations
-	enum {NONE, DISPLACE, ROTATE, SCALE}  ## I planned to add scaling too but decided to give up
-	const InteractionDistance = 20
-	const MIN_LENGTH: float = 10
-	const START_RADIUS: float = 6
-	const END_RADIUS: float = 4
-	const WIDTH: float = 2
-	const DESELECT_WIDTH: float = 1
-
-	signal update_property
-
-	# Variables set using serialize()
-	var bone_name: String
-	var parent_bone_name: String:
-		set(value):
-			parent_bone_name = value
-			update_property.emit(bone_name ,"parent_bone_name", false, "")
-	var gizmo_origin: Vector2:
-		set(value):
-			var diff = value - gizmo_origin
-			gizmo_origin = value
-			update_property.emit(bone_name ,"gizmo_origin", false, diff)
-	var gizmo_rotate_origin: float = 0:  ## Unit is Radians
-		set(value):
-			var diff = value - gizmo_rotate_origin
-			gizmo_rotate_origin = value
-			update_property.emit(bone_name ,"gizmo_rotate_origin", false, diff)
-	var start_point: Vector2:  ## This is relative to the gizmo_origin
-		set(value):
-			var diff = value - start_point
-			start_point = value
-			update_property.emit(bone_name ,"start_point", true, diff)
-	var bone_rotation: float = 0:  ## This is relative to the gizmo_rotate_origin (Radians)
-		set(value):
-			var diff = value - bone_rotation
-			bone_rotation = value
-			update_property.emit(bone_name ,"bone_rotation", true, diff)
-	var gizmo_length: int:
-		set(value):
-			var diff = value - gizmo_length
-			if value < int(MIN_LENGTH):
-				value = int(MIN_LENGTH)
-				diff = 0
-			gizmo_length = value
-			update_property.emit(bone_name ,"gizmo_length", false, diff)
-
-	# Properties determined using above variables
-	var end_point: Vector2:  ## This is relative to the gizmo_origin
-		get():
-			return Vector2(gizmo_length, 0).rotated(gizmo_rotate_origin + bone_rotation)
-	var modify_mode := SkeletonGizmo.NONE
-	var ignore_rotation_hover := false
-
-	static func generate_empty_data(
-		cel_bone_name := "Invalid Name", cel_parent_bone_name := "Invalid Parent"
-	) -> Dictionary:
-		# Make sure the name/types are the same as the variable names/types
-		return {
-			"bone_name": cel_bone_name,
-			"parent_bone_name": cel_parent_bone_name,
-			"gizmo_origin": Vector2.ZERO,
-			"gizmo_rotate_origin": 0,
-			"start_point": Vector2.ZERO,
-			"bone_rotation": 0,
-			"gizmo_length": MIN_LENGTH,
-		}
-
-	func serialize(data: Dictionary) -> void:
-		var reference_data = generate_empty_data()
-		for key in reference_data.keys():
-			if get(key) != data.get(key, reference_data[key]):
-				set(key, data.get(key, reference_data[key]))
-
-	func hover_mode(mouse_position: Vector2, camera_zoom) -> int:
-		var local_mouse_pos = rel_to_origin(mouse_position)
-		if (start_point).distance_to(local_mouse_pos) <= InteractionDistance / camera_zoom.x:
-			return DISPLACE
-		elif (
-			(start_point + end_point).distance_to(local_mouse_pos)
-			<= InteractionDistance / camera_zoom.x
-		):
-			if !ignore_rotation_hover:
-				return SCALE
-		elif is_close_to_segment(
-			rel_to_start_point(mouse_position),
-			InteractionDistance / camera_zoom.x,
-			Vector2.ZERO, end_point
-		):
-			if !ignore_rotation_hover:
-				return ROTATE
-		return NONE
-
-	static func is_close_to_segment(
-		pos: Vector2, detect_distance: float, s1: Vector2, s2: Vector2
-	) -> bool:
-		var test_line := (s2 - s1).rotated(deg_to_rad(90)).normalized()
-		var from_a := pos - test_line * detect_distance
-		var from_b := pos + test_line * detect_distance
-		if Geometry2D.segment_intersects_segment(from_a, from_b, s1, s2):
-			return true
-		return false
-
-	## Converts coordinates that are relative to canvas get converted to position relative to
-	## gizmo_origin.
-	func rel_to_origin(pos: Vector2) -> Vector2:
-		return pos - gizmo_origin
-
-	## Converts coordinates that are relative to canvas get converted to position relative to
-	## start point (the bigger circle).
-	func rel_to_start_point(pos: Vector2) -> Vector2:
-		return pos - gizmo_origin - start_point
-
-	## Converts coordinates that are relative to gizmo_origin get converted to position relative to
-	## canvas.
-	func rel_to_canvas(pos: Vector2, is_rel_to_start_point := false) -> Vector2:
-		var diff = start_point if is_rel_to_start_point else Vector2.ZERO
-		return pos + gizmo_origin + diff
-
-	func reset_bone(overrides := {}) -> Dictionary:
-		var reset_data = generate_empty_data(bone_name, parent_bone_name)
-		var connection_array := update_property.get_connections()
-		for connection: Dictionary in connection_array:
-			update_property.disconnect(connection["callable"])
-		for key in reset_data.keys():
-			if key in overrides.keys():
-				set(key, overrides[key])
-				reset_data[key] = overrides[key]
-			else:
-				set(key, reset_data[key])
-		for connection: Dictionary in connection_array:
-			update_property.connect(connection["callable"])
-		return reset_data
+func bone_has_parent(bone: SkeletonGizmo):
+	return bone.parent_bone_name in current_frame_bones.keys()
 
 
 func update_bone_property(parent_name: String, property: String, should_propagate: bool, diff, project):
@@ -270,12 +145,66 @@ func generate_heirarchy(old_data: Dictionary) -> void:
 		old_data.erase(layer_name)
 
 
-func _input(_event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
 	var project = api.project.current_project
 	if not pose_layer:
 		return
 	if not project.layers[pose_layer.index].locked:
 		project.layers[pose_layer.index].locked = true
+
+	## This manages the hovering mechanism of gizmo
+	if (
+		not is_pose_layer(project.layers[project.current_layer])
+		or active_skeleton_tools.size() == 0
+	):
+		return
+	var pos = global.canvas.current_pixel
+	if hover_gizmo:  # Check if we are still hovering over the same gizmo
+		# Clear the hover_gizmo if it's not being hovered or interacted with
+		if (
+			hover_gizmo.hover_mode(pos, global.camera.zoom) == SkeletonGizmo.NONE
+			and hover_gizmo.modify_mode == SkeletonGizmo.NONE
+		):
+			hover_gizmo = null
+		else:
+			queue_redraw()
+	if !hover_gizmo:  # If in the prevoius check we deselected the gizmo then search for a new one.
+		if selected_gizmo and active_tool:
+			# If a tool is actively using a bone then we don't need to calculate hovering
+			return
+		for bone: SkeletonGizmo in current_frame_bones.values():
+			if bone.modify_mode != SkeletonGizmo.NONE and not bone == selected_gizmo:
+				# Bones should only have an active modify_mode if it is the selected bone
+				bone.modify_mode = SkeletonGizmo.NONE
+			# Select the bone if it's being hovered or modified
+			if (
+				bone.hover_mode(pos, global.camera.zoom) != SkeletonGizmo.NONE
+			):
+				var skip_gizmo := false
+				if (
+					bones_chained
+					and (
+						bone.hover_mode(pos, global.camera.zoom) == SkeletonGizmo.ROTATE
+					)
+				):
+					# In chaining mode, we only allow rotation (through gizmo) if it is
+					# the last bone in the chain. Ignore bone if it is a parent of another bone
+					for another_bone in current_frame_bones.values():
+						if another_bone.parent_bone_name == bone.bone_name:
+							skip_gizmo = true
+							break
+				if skip_gizmo:
+					continue
+				hover_gizmo = bone
+				update_frame_data()
+				break
+		queue_redraw()
+
+	if (
+		event.is_action_pressed(&"activate_left_tool")
+		or event.is_action_pressed(&"activate_right_tool")
+	):
+		selected_gizmo = hover_gizmo
 
 
 func generate_pose(for_frame := current_frame) -> void:
@@ -456,6 +385,17 @@ func project_layers_moved() -> void:
 			queue_generate = true
 
 
+func get_valid_name(initial_name: String, existing_names: Array) -> String:
+	## Remove any previous suffixes
+	#initial_name = get_name_without_suffix(initial_name)
+	var new_name := initial_name
+	var suffix := ""
+	while new_name in existing_names:
+		suffix += "_"
+		new_name = initial_name + suffix
+	return new_name
+
+
 func layer_name_changed(layer, old_name: String) -> void:
 	if layer.get_layer_type() == 0 and not is_sane(api.project.current_project):
 		if "Pose Layer" in layer.name.capitalize():
@@ -465,6 +405,10 @@ func layer_name_changed(layer, old_name: String) -> void:
 	elif layer.get_layer_type() == 1:
 		if is_sane(api.project.current_project):
 			if old_name in current_frame_data.keys():
+				# Disconnect and later re-connect with new "old_name"
+				layer.name_changed.disconnect(layer_name_changed)
+				if layer.name in current_frame_data.keys():  # Conflict Detected
+					layer.name = get_valid_name(layer.name, current_frame_data.keys())
 				if old_name in current_frame_bones.keys():
 					# Needed if bones have been generated for this frame
 					var rename_bone: SkeletonGizmo = current_frame_bones[old_name]
@@ -475,7 +419,10 @@ func layer_name_changed(layer, old_name: String) -> void:
 				if layer.parent:
 					rename_data["parent_bone_name"] = layer.parent.name
 				current_frame_data[layer.name] = rename_data
+				print(layer.name, rename_data)
+				layer.name_changed.connect(layer_name_changed.bind(layer, layer.name))
 			else: ## It's a new bone
+				print("New bone detected")
 				var layer_parent_name = ""
 				if layer.parent:
 					layer_parent_name = layer.parent.name
@@ -493,6 +440,7 @@ func _draw() -> void:
 	var project = api.project.current_project
 	var group_names: Array = current_frame_data.keys()
 	for bone_name: String in group_names:
+		# before drawing the gizmo, we check if it needs update, or creation first
 		if bone_name in current_frame_bones.keys():
 			var bone = current_frame_bones[bone_name]
 			bone.serialize(current_frame_data[bone_name])
@@ -516,26 +464,24 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 	#var frame_cels = project.frames[project.current_frame].cels
 	#var bone_cel: BoneCel = frame_cels[bone.index]
 	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
+	var highlight = (gizmo == hover_gizmo or gizmo == selected_gizmo)
 
 	var width: float = (
-		(gizmo.WIDTH if (gizmo == selected_gizmo) else gizmo.DESELECT_WIDTH) / camera_zoom.x
+		(gizmo.WIDTH if (highlight) else gizmo.DESELECT_WIDTH) / camera_zoom.x
 	)
 	var net_width = width
-	var bone_color := Color.WHITE if (gizmo == selected_gizmo) else Color.GRAY
+	var bone_color := Color.WHITE if (highlight) else Color.GRAY
 	var hover_mode = max(gizmo.modify_mode, gizmo.hover_mode(mouse_point, camera_zoom))
-	if hover_mode == SkeletonGizmo.SCALE:
+	if hover_mode == SkeletonGizmo.EXTEND:
 		hover_mode = SkeletonGizmo.ROTATE
 	if gizmo.hover_mode(mouse_point, camera_zoom) == SkeletonGizmo.NONE:
 		hover_mode = SkeletonGizmo.NONE
 
-	# Start with values assumed for Edit Mode
-	var bone_start := gizmo.start_point
-	var bone_end := gizmo.end_point
 	# Draw the position circle
 	draw_set_transform(gizmo.gizmo_origin)
 	net_width = width + (width / 2 if (hover_mode == SkeletonGizmo.DISPLACE) else 0.0)
 	draw_circle(
-		bone_start,
+		gizmo.start_point,
 		gizmo.START_RADIUS / camera_zoom.x,
 		bone_color,
 		false,
@@ -559,8 +505,8 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 		draw_set_transform(gizmo.gizmo_origin)
 		# Draw the line joining the position and rotation circles
 		draw_line(
-			bone_start,
-			bone_start + bone_end,
+			gizmo.start_point,
+			gizmo.start_point + gizmo.end_point,
 			bone_color,
 			(
 				net_width
@@ -570,7 +516,7 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 		)
 		# Draw rotation circle (pose mode)
 		draw_circle(
-			bone_start + bone_end,
+			gizmo.start_point + gizmo.end_point,
 			SkeletonGizmo.END_RADIUS / camera_zoom.x,
 			bone_color,
 			false,
@@ -590,10 +536,13 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 			gizmo.rel_to_origin(parent.rel_to_canvas(p_start)) + p_end
 		)
 		draw_set_transform(gizmo.gizmo_origin)
-		# NOTE: bone_start is coordinate of tail of bone, parent_start is head of parent
+		# NOTE: gizmo.start_point is coordinate of tail of bone, parent_start is head of parent
 		# (or tail in chained mode)
 		draw_dashed_line(
-			bone_start, parent_start, bone_color, SkeletonGizmo.DESELECT_WIDTH / camera_zoom.x
+			gizmo.start_point,
+			parent_start,
+			bone_color,
+			SkeletonGizmo.DESELECT_WIDTH / camera_zoom.x
 		)
 		draw_set_transform(Vector2.ZERO)
 	var font = get_node_or_null("/root/Themes").get_font()
@@ -601,9 +550,9 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 	var fade_ratio = (line_size * camera_zoom.x) / (font.get_string_size(gizmo.bone_name).x)
 	if bones_chained:
 		fade_ratio = max(0.3, fade_ratio)
-	if fade_ratio >= 0.4 and !transformation_active:  # Hide names if we have zoomed far
+	if fade_ratio >= 0.4 and !active_tool:  # Hide names if we have zoomed far
 		draw_set_transform(
-			gizmo.gizmo_origin + bone_start, rotation, Vector2.ONE / camera_zoom.x
+			gizmo.gizmo_origin + gizmo.start_point, rotation, Vector2.ONE / camera_zoom.x
 		)
 		draw_string(font, Vector2(3, -3), gizmo.bone_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, bone_color)
 
@@ -727,16 +676,26 @@ func is_pose_layer(layer) -> bool:
 
 func manage_layer_visibility() -> void:
 	var pose_layer_visible = (api.project.current_project.current_layer == pose_layer.index)
-	pose_layer.visible = pose_layer_visible
-	if api.project.current_project.current_layer == pose_layer.index:
-		if queue_generate:
-			queue_generate = false
-			generate_pose()
-	# Also disable the root folders
-	for layer_idx in api.project.current_project.layers.size():
-		var layer = api.project.current_project.layers[layer_idx]
-		if layer.get_layer_type() == 1 and not layer.parent:
-			api.project.current_project.layers[layer_idx].visible = !pose_layer_visible
+	if pose_layer_visible != pose_layer.visible:
+		pose_layer.visible = pose_layer_visible
+		if not pose_layer.visible:
+			selected_gizmo = null
+		if api.project.current_project.current_layer == pose_layer.index:
+			if queue_generate:
+				queue_generate = false
+				generate_pose()
+		# Also disable the root folders
+		for layer_idx in api.project.current_project.layers.size():
+			var layer = api.project.current_project.layers[layer_idx]
+			if layer.get_layer_type() == 1 and not layer.parent:
+				api.project.current_project.layers[layer_idx].visible = !pose_layer_visible
+
+
+func menu_item_clicked():
+	var project = api.project.current_project
+	var current_layer = project.layers[project.current_layer]
+	if !pose_layer and current_layer.get_layer_type() == 0:
+		pose_layer = current_layer
 
 
 func assign_pose_layer(layer) -> void:
@@ -752,7 +711,7 @@ func find_pose_layer(project) -> RefCounted:
 		if is_pose_layer(project.layers[layer_idx]):
 			if project.layers[layer_idx].index != layer_idx:
 				# Index mismatch detected, Fixing...
-				project.layers[layer_idx].index = layer_idx  # update the isx of the layer
+				project.layers[layer_idx].index = layer_idx  # update the idx of the layer
 			return project.layers[layer_idx]
 	return
 

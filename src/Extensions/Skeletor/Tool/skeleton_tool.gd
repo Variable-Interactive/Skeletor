@@ -1,22 +1,22 @@
 extends VBoxContainer
 
 enum IKAlgorithms { FABRIK, CCDIK }
-enum {NONE, DISPLACE, ROTATE, SCALE}  ## same as the one in SkeletonGizmo class
+
+var COLLAPSIBLE_CONTAINER = load("res://src/UI/Nodes/CollapsibleContainer.gd")
 
 var api: Node
 var tool_slot
 var kname: String
 var cursor_text := ""
-var skeleton_manager: Node2D
-var is_transforming := false
+var bone_manager: Node2D
 var generation_threshold: float = 20
 var live_thread := Thread.new()
 
 var _live_update := false
 var _allow_chaining := false
-var _use_ik := true
+var _use_ik := false
 var _ik_protocol: int = IKAlgorithms.FABRIK
-var _chain_length: int = 20
+var _chain_length: int = 2
 var _max_ik_itterations: int = 20
 var _ik_error_margin: float = 0.1
 var _include_children := true
@@ -24,18 +24,25 @@ var _displace_offset := Vector2.ZERO
 var _prev_mouse_position := Vector2.INF
 var _distance_to_parent: float = 0
 var _chained_gizmo = null
-var current_selected_bone: RefCounted
 var _rot_slider: TextureProgressBar
 var _pos_slider: HBoxContainer
+var _chain_size_slider: TextureProgressBar
+var _itteration_slider: TextureProgressBar
+var _error_margin_slider: TextureProgressBar
 
-@onready var quick_set_bones_menu: MenuButton = $QuickSetBones
-@onready var rotation_reset_menu: MenuButton = $RotationReset
-@onready var position_reset_menu: MenuButton = $PositionReset
-@onready var copy_pose_from: MenuButton = $CopyPoseFrom
-@onready var force_refresh_pose: MenuButton = $ForceRefreshPose
-@onready var tween_skeleton_menu: MenuButton = $TweenSkeleton
+@onready var copy_pose_from: MenuButton = %CopyPoseFrom
+@onready var quick_set_bones_menu: MenuButton = %QuickSetBones
+@onready var force_refresh_pose: MenuButton = %ForceRefreshPose
+@onready var rotation_reset_menu: MenuButton = %RotationReset
+@onready var position_reset_menu: MenuButton = %PositionReset
+@onready var tween_skeleton_menu: MenuButton = %TweenSkeleton
 @onready var ik_options: VBoxContainer = %IKOptions
+@onready var bone_props: VBoxContainer = %BoneProps
 
+@onready var ik_section: VBoxContainer = %IKSection
+@onready var skeleton_section: VBoxContainer = %SkeletonSection
+@onready var utilities_section: VBoxContainer = %UtilitiesSection
+@onready var reset_section: VBoxContainer = %ResetSection
 
 
 class FABRIK:
@@ -43,7 +50,7 @@ class FABRIK:
 	# https://github.com/nezvers/Godot_Public_Examples/blob/master/Nature_code/Kinematics/FABRIK.gd
 	# see https://www.youtube.com/watch?v=Ihp6tOCYHug for an intuitive explanation.
 	static func calculate(
-		bone_chain: Array[RefCounted],
+		bone_chain: Array[SkeletonGizmo],
 		target_pos: Vector2,
 		max_itterations: int,
 		error_margin: float
@@ -126,7 +133,7 @@ class FABRIK:
 			tail_of_next = head_of_last + (dir * lenghts[i])
 			pos_list[i + 1] = tail_of_next
 
-	static func _get_global_start(bone_gizmo: RefCounted) -> Vector2:
+	static func _get_global_start(bone_gizmo: SkeletonGizmo) -> Vector2:
 		return bone_gizmo.rel_to_canvas(bone_gizmo.start_point)
 
 
@@ -134,7 +141,10 @@ class CCDIK:
 	# Inspired from:
 	# https://github.com/chFleschutz/inverse-kinematics-algorithms/blob/main/src/CCD.h
 	static func calculate(
-		bone_chain: Array[RefCounted], target_pos: Vector2, max_iterations: int, error_margin: float
+		bone_chain: Array[SkeletonGizmo],
+		target_pos: Vector2,
+		max_iterations: int,
+		error_margin: float
 	) -> bool:
 		var lenghts := PackedFloat32Array()
 		var total_length: float = 0
@@ -188,19 +198,21 @@ class CCDIK:
 				return true
 		return true
 
-	static func _get_global_start(bone_gizmo: RefCounted) -> Vector2:
+	static func _get_global_start(bone_gizmo: SkeletonGizmo) -> Vector2:
 		return bone_gizmo.rel_to_canvas(bone_gizmo.start_point)
 
 
 ## Returns the SkeletonGizmos in the IK chain in order, with the last bone at the end
-func get_ik_cels(start_bone: RefCounted) -> Array[RefCounted]:
-	var bone_chain: Array[RefCounted] = []
+func get_ik_cels(start_bone: SkeletonGizmo) -> Array[SkeletonGizmo]:
+	var bone_chain: Array[SkeletonGizmo] = []
+	var b_names := []
 	var i = 0
 	var p = start_bone
-	if skeleton_manager:
+	if bone_manager:
 		while p:
 			bone_chain.push_front(p)
-			p = skeleton_manager.current_frame_bones.get(p.parent_bone_name, null)
+			b_names.push_front(p.parent_bone_name)
+			p = bone_manager.current_frame_bones.get(p.parent_bone_name, null)
 			i += 1
 			if i > _chain_length:
 				break
@@ -209,17 +221,22 @@ func get_ik_cels(start_bone: RefCounted) -> Array[RefCounted]:
 
 func _ready() -> void:
 	api = get_node_or_null("/root/ExtensionsApi")
-	if api:
-		skeleton_manager = api.general.get_canvas().find_child("SkeletonPreview", false, false)
-		if skeleton_manager:
-			skeleton_manager.active_skeleton_tools.append(self)
-			skeleton_manager.queue_redraw()
+	if api:  # Api loading Successful
+		# Find the Skeleton Manager/Preview. It should be a child of canvas.
+		bone_manager = api.general.get_canvas().find_child("SkeletonPreview", false, false)
+		if bone_manager:
+			# If we found it then let the manager know we selected this tool
+			bone_manager.active_skeleton_tools.append(self)
+			bone_manager.queue_redraw()
+		# Assign colors to the tools for Left/Right indication, and give it a name
+		# (This is something Pixelorama does) automatically to it's tools
 		if tool_slot.name == "Left tool":
 			$ColorRect.color = api.general.get_global().left_tool_color
 		else:
 			$ColorRect.color = api.general.get_global().right_tool_color
 		$Label.text = "Skeleton Options"
 
+		# Add some Slider UI that can only be created through api
 		_pos_slider = api.general.create_value_slider_v2()
 		_pos_slider.allow_greater = true
 		_pos_slider.allow_lesser = true
@@ -229,7 +246,7 @@ func _ready() -> void:
 		_pos_slider.min_value = Vector2.ZERO
 		_pos_slider.max_value = Vector2(100, 100)
 		_pos_slider.name = "BonePositionSlider"
-		%BoneProps.add_child(_pos_slider)
+		bone_props.add_child(_pos_slider)
 
 		_rot_slider = api.general.create_value_slider()
 		_rot_slider.allow_greater = true
@@ -242,34 +259,92 @@ func _ready() -> void:
 		_rot_slider.step = 0.01
 		_rot_slider.name = "BoneRotationSlider"
 		_rot_slider.custom_minimum_size.y = 24.0
-		%BoneProps.add_child(_rot_slider)
+		bone_props.add_child(_rot_slider)
 
+		_chain_size_slider = api.general.create_value_slider()
+		_chain_size_slider.allow_greater = true
+		_chain_size_slider.allow_lesser = false
+		_chain_size_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_chain_size_slider.prefix = tr("Chain Size:")
+		_chain_size_slider.min_value = 0
+		_chain_size_slider.max_value = 10
+		_chain_size_slider.step = 1
+		_chain_size_slider.name = "ChainSize"
+		_chain_size_slider.custom_minimum_size.y = 24.0
+		ik_options.add_child(_chain_size_slider)
+
+		_itteration_slider = api.general.create_value_slider()
+		_itteration_slider.allow_greater = true
+		_itteration_slider.allow_lesser = false
+		_itteration_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_itteration_slider.prefix = tr("Itterations:")
+		_itteration_slider.min_value = 0
+		_itteration_slider.max_value = 100
+		_itteration_slider.step = 1
+		_itteration_slider.name = "IKIterations"
+		_itteration_slider.custom_minimum_size.y = 24.0
+		ik_options.add_child(_itteration_slider)
+
+		_error_margin_slider = api.general.create_value_slider()
+		_error_margin_slider.allow_greater = true
+		_error_margin_slider.allow_lesser = false
+		_error_margin_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_error_margin_slider.prefix = tr("Error Margin:")
+		_error_margin_slider.min_value = 0
+		_error_margin_slider.max_value = 10
+		_error_margin_slider.step = 0.1
+		_error_margin_slider.name = "ErrorMargin"
+		_error_margin_slider.custom_minimum_size.y = 24.0
+		ik_options.add_child(_error_margin_slider)
+
+		# Add Collapsible Containers
+		skeleton_section.set_script(COLLAPSIBLE_CONTAINER)
+		skeleton_section.text = "Skeleton"
+		skeleton_section.set_visible_children(false)
+		skeleton_section.call("_ready")
+
+		utilities_section.set_script(COLLAPSIBLE_CONTAINER)
+		utilities_section.text = "Utilities"
+		utilities_section.set_visible_children(false)
+		utilities_section.call("_ready")
+
+		reset_section.set_script(COLLAPSIBLE_CONTAINER)
+		reset_section.text = "Reset"
+		reset_section.set_visible_children(false)
+		reset_section.call("_ready")
+
+		ik_section.set_script(COLLAPSIBLE_CONTAINER)
+		ik_section.text = "Inverse Kinematics"
+		ik_section.set_visible_children(false)
+		ik_section.call("_ready")
+
+		# Connect signals for Sliders
+		_chain_size_slider.value_changed.connect(_on_chain_size_value_changed)
+		_itteration_slider.value_changed.connect(_on_ik_iterations_value_changed)
+		_error_margin_slider.value_changed.connect(_on_ik_error_margin_value_changed)
+		# Connect signals to be notified of some important actions
 		api.signals.signal_cel_switched(display_props)
 		api.signals.signal_project_switched(display_props)
 		api.signals.signal_project_data_changed(_on_project_data_changed)
+		# Connect signals for MenuButtons
+		quick_set_bones_menu.get_popup().index_pressed.connect(quick_set_bones)
+		rotation_reset_menu.get_popup().index_pressed.connect(reset_bone_angle)
+		position_reset_menu.get_popup().index_pressed.connect(reset_bone_position)
+		force_refresh_pose.get_popup().index_pressed.connect(refresh_pose)
 
-	quick_set_bones_menu.get_popup().index_pressed.connect(quick_set_bones)
-	rotation_reset_menu.get_popup().index_pressed.connect(reset_bone_angle)
-	position_reset_menu.get_popup().index_pressed.connect(reset_bone_position)
-	force_refresh_pose.get_popup().index_pressed.connect(refresh_pose)
+	# Loading finished, Assign name to Node and load configuration
 	kname = name.replace(" ", "_").to_lower()
 	load_config()
 
 
-func _on_warn_pressed() -> void:
-	var warn_text = """
-To avoid any quirky behavior, it is recomended to not tween between
-large rotations, and have "Include bone children" enabled.
-"""
-	api.dialog.show_error(warn_text)
-
-
+## Loads, Sets and Updates the UI
 func load_config() -> void:
 	var value = api.general.get_global().config_cache.get_value(tool_slot.kname, kname, {})
 	set_config(value)
 	update_config()
 
 
+## Serializes the current script variables. Used by save_config method
 func get_config() -> Dictionary:
 	var config :Dictionary
 	config["live_update"] = _live_update
@@ -282,7 +357,7 @@ func get_config() -> Dictionary:
 	config["include_children"] = _include_children
 	return config
 
-
+## Deserializes the current script variables. Used by load_config method
 func set_config(config: Dictionary) -> void:
 	_live_update = config.get("live_update", _live_update)
 	_allow_chaining = config.get("allow_chaining", _allow_chaining)
@@ -294,403 +369,66 @@ func set_config(config: Dictionary) -> void:
 	_include_children = config.get("include_children", _include_children)
 
 
+## Updates th UI based on the current values of Script variables
 func update_config() -> void:
 	%LiveUpdateCheckbox.button_pressed = _live_update
 	%AllowChaining.button_pressed = _allow_chaining
 	%InverseKinematics.set_pressed_no_signal(_use_ik)
 	%AlgorithmOption.select(_ik_protocol)
-	### Use valuesliders later
-	#%ChainSize.set_value_no_signal_update_display(_chain_length)
-	#%IKIterations.set_value_no_signal_update_display(_max_ik_itterations)
-	#%IKErrorMargin.set_value_no_signal_update_display(_ik_error_margin)
-	ik_options.visible = _allow_chaining
+	_chain_size_slider.set_value_no_signal_update_display(_chain_length)
+	_itteration_slider.set_value_no_signal_update_display(_max_ik_itterations)
+	_error_margin_slider.set_value_no_signal_update_display(_ik_error_margin)
+	# Update Visibility of some UI options
+	%InverseKinematics.visible = _allow_chaining
+	ik_options.visible = _use_ik
 	%IncludeChildrenCheckbox.button_pressed = _include_children
-	if skeleton_manager:
-		skeleton_manager.bones_chained = _allow_chaining
-		skeleton_manager.queue_redraw()
+	if bone_manager:
+		# Update properties ofthe manager
+		bone_manager.bones_chained = _allow_chaining
+		bone_manager.queue_redraw()
 
 
-func _on_inverse_kinematics_toggled(toggled_on: bool) -> void:
-	_use_ik = toggled_on
-	update_config()
-	save_config()
-
-
-func _on_algorithm_selected(index: int) -> void:
-	_ik_protocol = index
-	update_config()
-	save_config()
-
-
-func _on_chain_size_value_changed(value: float) -> void:
-	@warning_ignore("narrowing_conversion")
-	_chain_length = value
-	update_config()
-	save_config()
-
-
-func _on_ik_iterations_value_changed(value: float) -> void:
-	@warning_ignore("narrowing_conversion")
-	_max_ik_itterations = value
-	update_config()
-	save_config()
-
-
-func _on_ik_error_margin_value_changed(value: float) -> void:
-	_ik_error_margin = value
-	update_config()
-	save_config()
-
-
+## Saves the current script variables as a dictionary
 func save_config() -> void:
 	var config := get_config()
 	api.general.get_global().config_cache.set_value(tool_slot.kname, kname, config)
 
 
-func _exit_tree() -> void:
-	if skeleton_manager:
-		skeleton_manager.announce_tool_removal(self)
-		skeleton_manager.queue_redraw()
-	if api:
-		api.signals.signal_cel_switched(display_props, true)
-		api.signals.signal_project_switched(display_props, true)
-		api.signals.signal_project_data_changed(_on_project_data_changed, true)
-
-
-func draw_start(_pos: Vector2i) -> void:
-	if !skeleton_manager:
-		return
-	# If this tool is on both sides then only allow one at a time
-	if skeleton_manager.transformation_active:
-		return
-	skeleton_manager.transformation_active = true
-	is_transforming = true
-	current_selected_bone = skeleton_manager.selected_gizmo
-	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
-	if !current_selected_bone:
-		return
-	if current_selected_bone.modify_mode == NONE:
-		# When moving mouse we may stop hovering but we are still modifying that bone.
-		# this is why we need a sepatate modify_mode variable
-		current_selected_bone.modify_mode = current_selected_bone.hover_mode(
-			Vector2(mouse_point), api.general.get_global().camera.zoom
-		)
-	if _prev_mouse_position == Vector2.INF:
-		_displace_offset = current_selected_bone.rel_to_start_point(mouse_point)
-		_prev_mouse_position = mouse_point
-	# Check if bone is a parent of anything (skip if it is)
-	if _allow_chaining and current_selected_bone.parent_bone_name in skeleton_manager.current_frame_bones.keys():
-		var parent_bone = skeleton_manager.current_frame_bones[current_selected_bone.parent_bone_name]
-		var bone_start: Vector2i = current_selected_bone.rel_to_canvas(current_selected_bone.start_point)
-		var parent_start: Vector2i = parent_bone.rel_to_canvas(parent_bone.start_point)
-		_distance_to_parent = bone_start.distance_to(parent_start)
+func _on_project_data_changed(_project):
 	display_props()
 
 
-func draw_move(_pos: Vector2i) -> void:
-	# Another tool is already active
-	if not is_transforming:
-		return
-	if !skeleton_manager:
-		return
-	var is_moving_without_transform = Input.is_key_pressed(KEY_CTRL)
-	# We need mouse_point to be a Vector2 in order for rotation to work properly.
-	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
-	var offset := mouse_point - _prev_mouse_position
-	if !current_selected_bone:
-		return
-	if (
-		_allow_chaining
-		and current_selected_bone.parent_bone_name in skeleton_manager.current_frame_bones.keys()
-		and not is_moving_without_transform
-	):
-		match current_selected_bone.modify_mode:  # This manages chaining
-			DISPLACE:
-				if _use_ik:
-					var update_canvas := true
-					match _ik_protocol:
-						IKAlgorithms.FABRIK:
-							update_canvas = FABRIK.calculate(
-								get_ik_cels(current_selected_bone),
-								mouse_point,
-								_max_ik_itterations,
-								_ik_error_margin
-							)
-						IKAlgorithms.CCDIK:
-							update_canvas = CCDIK.calculate(
-								get_ik_cels(current_selected_bone),
-								mouse_point,
-								_max_ik_itterations,
-								_ik_error_margin
-							)
-					if _live_update and update_canvas:
-						manage_threading_generate_pose()
-					_prev_mouse_position = mouse_point
-					display_props()
-					return  # We don't need to do anything further
-				else:
-					_chained_gizmo = current_selected_bone
-					current_selected_bone = skeleton_manager.current_frame_bones[current_selected_bone.parent_bone_name]
-					current_selected_bone.modify_mode = ROTATE
-					skeleton_manager.selected_gizmo = current_selected_bone
-					_chained_gizmo.modify_mode = NONE
-	if current_selected_bone.modify_mode == DISPLACE:
-		if is_moving_without_transform:
-			skeleton_manager.ignore_render_once = true
-			current_selected_bone.gizmo_origin += offset.rotated(-current_selected_bone.bone_rotation)
-		current_selected_bone.start_point = Vector2i(current_selected_bone.rel_to_origin(mouse_point) - _displace_offset)
-	elif (
-		current_selected_bone.modify_mode == ROTATE
-		or current_selected_bone.modify_mode == SCALE
-	):
-		var localized_mouse_norm: Vector2 = current_selected_bone.rel_to_start_point(mouse_point).normalized()
-		var localized_prev_mouse_norm: Vector2 = current_selected_bone.rel_to_start_point(
-			_prev_mouse_position
-		).normalized()
-		var diff := localized_mouse_norm.angle_to(localized_prev_mouse_norm)
-		if is_moving_without_transform:
-			skeleton_manager.ignore_render_once = true
-			current_selected_bone.gizmo_rotate_origin -= diff
-			if current_selected_bone.modify_mode == SCALE:
-				current_selected_bone.gizmo_length = current_selected_bone.rel_to_start_point(mouse_point).length()
-		else:
-			current_selected_bone.bone_rotation -= diff
-			if _allow_chaining and _chained_gizmo:
-				_chained_gizmo.bone_rotation += diff
-	if _live_update:
-		manage_threading_generate_pose()
-	_prev_mouse_position = mouse_point
-	display_props()
-
-
-func manage_threading_generate_pose():
-	if ProjectSettings.get_setting("rendering/driver/threads/thread_model") != 2:
-		skeleton_manager.generate_pose()
-	else:  # Multi-threaded mode (Currently pixelorama is single threaded)
-		if not live_thread.is_alive():
-			var error := live_thread.start(skeleton_manager.generate_pose)
-			if error != OK:  # Thread failed, so do this the hard way.
-				skeleton_manager.generate_pose()
-
-
-func draw_end(_pos: Vector2i) -> void:
-	_prev_mouse_position = Vector2.INF
-	_displace_offset = Vector2.ZERO
-	_chained_gizmo = null
-	if skeleton_manager:
-		# Another tool is already active
-		if not is_transforming:
-			return
-		is_transforming = false
-		skeleton_manager.transformation_active = false
-		if current_selected_bone:
-			if current_selected_bone.modify_mode != NONE:
-				skeleton_manager.generate_pose()
-				skeleton_manager.selected_gizmo.modify_mode = NONE
-			if (
-				_allow_chaining
-				and current_selected_bone.parent_bone_name in skeleton_manager.current_frame_bones.keys()
-			):
-				if current_selected_bone.modify_mode == DISPLACE:
-					skeleton_manager.current_frame_bones[current_selected_bone.parent_bone_name].modify_mode = NONE
-	api.project.current_project.has_changed = true
-	display_props()
-
-
-func quick_set_bones(bone_id: int):
-	if skeleton_manager:
-		var bone_names = get_selected_bone_names(quick_set_bones_menu.get_popup(), bone_id)
-		var new_data = skeleton_manager.current_frame_data.duplicate(true)
-		for layer_idx: int in api.project.current_project.layers.size():
-			var bone_name: StringName = api.project.current_project.layers[layer_idx].name
-			if bone_name in bone_names:
-				new_data[bone_name] = skeleton_manager.current_frame_bones[bone_name].reset_bone(
-					{"gizmo_origin": Vector2(skeleton_manager.get_best_origin(layer_idx))}
-				)
-		skeleton_manager.current_frame_data = new_data
-		skeleton_manager.save_frame_info(api.project.current_project)
-		skeleton_manager.queue_redraw()
-		skeleton_manager.generate_pose()
-
-
-func copy_bone_data(bone_id: int, from_frame: int, popup: PopupMenu, old_current_frame: int):
-	if skeleton_manager:
-		if old_current_frame != skeleton_manager.current_frame:
-			return
-		var bone_names := get_selected_bone_names(popup, bone_id)
-		var new_data = skeleton_manager.current_frame_data.duplicate(true)
-		var copy_data: Dictionary = skeleton_manager.load_frame_info(
-			api.project.current_project, from_frame
-		)
-		for bone_name in bone_names:
-			if bone_name in skeleton_manager.current_frame_bones.keys():
-				new_data[bone_name] = skeleton_manager.current_frame_bones[bone_name].reset_bone(
-					copy_data.get(bone_name, {})
-				)
-		skeleton_manager.current_frame_data = new_data
-		skeleton_manager.save_frame_info(api.project.current_project)
-		skeleton_manager.queue_redraw()
-		skeleton_manager.generate_pose()
-		copy_pose_from.get_popup().hide()
-		copy_pose_from.get_popup().clear(true)  # To save Memory
-
-
-func refresh_pose(refresh_mode: int):
-	if skeleton_manager:
-		var frames := [skeleton_manager.current_frame]
-		if refresh_mode == 0:  # All frames
-			frames = range(0, api.project.current_project.frames.size())
-		for frame_idx in frames:
-			skeleton_manager.generate_pose(frame_idx)
-
-
-func tween_skeleton_data(bone_id: int, from_frame: int, popup: PopupMenu, current_frame: int):
-	if skeleton_manager:
-		if current_frame != skeleton_manager.current_frame:
-			return
-		var bone_names := get_selected_bone_names(popup, bone_id)
-		var start_data: Dictionary = skeleton_manager.load_frame_info(
-			api.project.current_project, from_frame
-		)
-		var end_data: Dictionary = skeleton_manager.load_frame_info(
-			api.project.current_project, current_frame
-		)
-		for frame_idx in range(from_frame + 1, current_frame):
-			var frame_info: Dictionary = skeleton_manager.load_frame_info(
-				api.project.current_project, frame_idx
-			)
-			for bone_name in bone_names:
-				if (
-					bone_name in frame_info.keys()
-					and bone_name in start_data.keys()
-					and bone_name in end_data.keys()
-				):
-					var bone_dict: Dictionary = frame_info[bone_name]
-					for data_key: String in bone_dict.keys():
-						if typeof(bone_dict[data_key]) != TYPE_STRING:
-							bone_dict[data_key] = Tween.interpolate_value(
-								start_data[bone_name][data_key],
-								end_data[bone_name][data_key] - start_data[bone_name][data_key],
-								frame_idx - from_frame,
-								current_frame - from_frame,
-								Tween.TRANS_LINEAR,
-								Tween.EASE_IN
-							)
-			skeleton_manager.save_frame_info(api.project.current_project, frame_info, frame_idx)
-			skeleton_manager.generate_pose(frame_idx)
-		copy_pose_from.get_popup().hide()
-		copy_pose_from.get_popup().clear(true)  # To save Memory
-
-
-func reset_bone_angle(bone_id: int):
-	## This rotation will also rotate the child bones as the parent bone's angle is changed.
-	var bone_names := get_selected_bone_names(rotation_reset_menu.get_popup(), bone_id)
-	for bone_name in bone_names:
-		if bone_name in skeleton_manager.current_frame_bones.keys():
-			skeleton_manager.current_frame_bones[bone_name].bone_rotation = 0
-	skeleton_manager.queue_redraw()
-	skeleton_manager.generate_pose()
-
-
-func reset_bone_position(bone_id: int):
-	var bone_names := get_selected_bone_names(position_reset_menu.get_popup(), bone_id)
-	for bone_name in bone_names:
-		if bone_name in skeleton_manager.current_frame_bones.keys():
-			skeleton_manager.current_frame_bones[bone_name].start_point = Vector2.ZERO
-	skeleton_manager.queue_redraw()
-	skeleton_manager.generate_pose()
+## This is an info warning for the tween feature
+func _on_warn_pressed() -> void:
+	var warn_text = """
+To avoid any quirky behavior, it is recomended to not tween between
+large rotations, and have "Include bone children" enabled.
+"""
+	api.dialog.show_error(warn_text)
 
 
 func _on_rotation_changed(value: float):
 	## This rotation will also rotate the child bones as the parent bone's angle is changed.
-	if current_selected_bone:
-		if current_selected_bone in skeleton_manager.current_frame_bones.values():
-			current_selected_bone.bone_rotation = deg_to_rad(value)
-			skeleton_manager.queue_redraw()
-			skeleton_manager.generate_pose()
+	if bone_manager.selected_gizmo:
+		if bone_manager.selected_gizmo in bone_manager.current_frame_bones.values():
+			bone_manager.selected_gizmo.should_update_silently = not _include_children
+			bone_manager.selected_gizmo.bone_rotation = deg_to_rad(value)
+			bone_manager.queue_redraw()
+			bone_manager.generate_pose()
+			bone_manager.selected_gizmo.should_update_silently = false
 
 
 func _on_position_changed(value: Vector2):
-	if current_selected_bone:
-		if current_selected_bone in skeleton_manager.current_frame_bones.values():
-			current_selected_bone.start_point = current_selected_bone.rel_to_origin(value).ceil()
-			skeleton_manager.queue_redraw()
-			skeleton_manager.generate_pose()
+	if bone_manager.selected_gizmo:
+		if bone_manager.selected_gizmo in bone_manager.current_frame_bones.values():
+			bone_manager.selected_gizmo.should_update_silently = not _include_children
+			bone_manager.selected_gizmo.start_point = (
+				bone_manager.selected_gizmo.rel_to_origin(value).ceil()
+			)
+			bone_manager.queue_redraw()
+			bone_manager.generate_pose()
+			bone_manager.selected_gizmo.should_update_silently = false
 
-
-func _on_quick_set_bones_menu_about_to_popup() -> void:
-	if skeleton_manager:
-		populate_popup(quick_set_bones_menu.get_popup())
-
-
-func _on_rotation_reset_menu_about_to_popup() -> void:
-	if skeleton_manager:
-		populate_popup(rotation_reset_menu.get_popup(), {"bone_rotation": 0})
-
-
-func _on_position_reset_menu_about_to_popup() -> void:
-	if skeleton_manager:
-		populate_popup(position_reset_menu.get_popup(), {"start_point": Vector2.ZERO})
-
-
-func _on_copy_pose_from_about_to_popup() -> void:
-	var popup := copy_pose_from.get_popup()
-	popup.clear(true)
-	if !skeleton_manager:
-		return
-	var project = api.project.current_project
-	var reference_bone_data: Dictionary = skeleton_manager.current_frame_data
-	for frame_idx in api.project.current_project.frames.size():
-		if skeleton_manager.current_frame == frame_idx:
-			# It won't make a difference if we skip it or not (as the system will autoatically)
-			# skip it anyway (but it's bet to skip it ourselves to avoid unnecessary calculations)
-			continue
-		var frame_data: Dictionary = skeleton_manager.load_frame_info(project, frame_idx)
-		if (
-			frame_data != skeleton_manager.current_frame_data  # Different pose detected
-		):
-			if reference_bone_data != frame_data:  # Checks if this pose is already added to list
-				reference_bone_data = frame_data  # Mark this pose as seen
-				var popup_submenu = PopupMenu.new()
-				popup_submenu.about_to_popup.connect(
-					populate_popup.bind(popup_submenu, reference_bone_data)
-				)
-				popup.add_submenu_node_item(str("Frame ", frame_idx + 1), popup_submenu)
-				popup_submenu.index_pressed.connect(
-					copy_bone_data.bind(frame_idx, popup_submenu, skeleton_manager.current_frame)
-				)
-
-func _on_force_refresh_pose_about_to_popup() -> void:
-	var popup := force_refresh_pose.get_popup()
-	popup.clear(true)
-	popup.add_item("All Frames")
-	popup.add_separator()
-	popup.add_item(str("Current Frame"))
-
-
-func _on_tween_skeleton_about_to_popup() -> void:
-	var popup := tween_skeleton_menu.get_popup()
-	var project = api.project.current_project
-	popup.clear(true)
-	popup.add_separator("Start From")
-	var reference_bone_data: Dictionary = skeleton_manager.current_frame_data
-	for frame_idx in api.project.current_project.frames.size():
-		if frame_idx >= skeleton_manager.current_frame - 1:
-			break
-		var frame_data: Dictionary = skeleton_manager.load_frame_info(project, frame_idx)
-		if (
-			frame_data != skeleton_manager.current_frame_data  # Different pose detected
-		):
-			if reference_bone_data != frame_data:  # Checks if this pose is already added to list
-				reference_bone_data = frame_data  # Mark this pose as seen
-				var popup_submenu = PopupMenu.new()
-				popup_submenu.about_to_popup.connect(
-					populate_popup.bind(popup_submenu, reference_bone_data)
-				)
-				popup.add_submenu_node_item(str("Frame ", frame_idx + 1), popup_submenu)
-				popup_submenu.index_pressed.connect(
-					tween_skeleton_data.bind(frame_idx, popup_submenu, skeleton_manager.current_frame)
-				)
 
 func _on_include_children_checkbox_toggled(toggled_on: bool) -> void:
 	_include_children = toggled_on
@@ -710,18 +448,421 @@ func _on_live_update_pressed(toggled_on: bool) -> void:
 	save_config()
 
 
+## Toggles the Inverse Kinematics feature
+func _on_inverse_kinematics_toggled(toggled_on: bool) -> void:
+	_use_ik = toggled_on
+	update_config()
+	save_config()
+
+
+## Selects the Inverse Kinematics algorithm
+func _on_algorithm_selected(index: int) -> void:
+	_ik_protocol = index
+	update_config()
+	save_config()
+
+
+## Sets the chain size required for IK calculations
+func _on_chain_size_value_changed(value: float) -> void:
+	@warning_ignore("narrowing_conversion")
+	_chain_length = value
+	update_config()
+	save_config()
+
+
+## Sets the itteration count required for IK algorithms
+func _on_ik_iterations_value_changed(value: float) -> void:
+	@warning_ignore("narrowing_conversion")
+	_max_ik_itterations = value
+	update_config()
+	save_config()
+
+
+## Sets the error margin required for IK algorithms
+func _on_ik_error_margin_value_changed(value: float) -> void:
+	_ik_error_margin = value
+	update_config()
+	save_config()
+
+
+## Triggered when the tool is exiting (pixelorama closing, tool changing, extension disabling).
+## Used to reverse stuff done in _ready or _enter_tree methods
+func _exit_tree() -> void:
+	if bone_manager:  # Let the manager know this tool is no longer present
+		bone_manager.announce_tool_removal(self)
+		bone_manager.queue_redraw()
+	if api:  # Disconnect any remaining rogue signals
+		api.signals.signal_cel_switched(display_props, true)
+		api.signals.signal_project_switched(display_props, true)
+		api.signals.signal_project_data_changed(_on_project_data_changed, true)
+
+
+func draw_start(_pos: Vector2i) -> void:
+	# Do basic check before proceding
+	if !bone_manager:  # Failure at detecting manager
+		return
+	if bone_manager.active_tool != null:  # Manager already in use by another tool
+		return
+
+	# Checks passed, mark the manager as being used by this tool
+	bone_manager.active_tool = self
+	# Mark this tool as active as well
+	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
+	if !bone_manager.selected_gizmo:
+		display_props()
+		return
+	if bone_manager.selected_gizmo.modify_mode == SkeletonGizmo.NONE:
+		# When moving mouse we may stop hovering but we are still modifying that bone.
+		# this is why we need a sepatate modify_mode variable
+		bone_manager.selected_gizmo.modify_mode = bone_manager.selected_gizmo.hover_mode(
+			Vector2(mouse_point), api.general.get_global().camera.zoom
+		)
+	if _prev_mouse_position == Vector2.INF:
+		_displace_offset = bone_manager.selected_gizmo.rel_to_start_point(mouse_point)
+		_prev_mouse_position = mouse_point
+	# In chaining mode, during movement (modify_mode == SkeletonGizmo.DISPLACE), we rotate the
+	# parent mode as well, so we should set the parent's modify_mode to SkeletonGizmo.NONE as well.
+	if _allow_chaining and bone_manager.bone_has_parent(bone_manager.selected_gizmo):
+		var parent_bone = bone_manager.current_frame_bones[
+			bone_manager.selected_gizmo.parent_bone_name
+		]
+		var bone_start: Vector2i = bone_manager.selected_gizmo.rel_to_canvas(
+			bone_manager.selected_gizmo.start_point
+		)
+		var parent_start: Vector2i = parent_bone.rel_to_canvas(parent_bone.start_point)
+		_distance_to_parent = bone_start.distance_to(parent_start)
+	display_props()
+
+
+func draw_move(_pos: Vector2i) -> void:
+	# Do basic check before proceding
+	if !bone_manager:  # Failure at detecting manager
+		return
+	if bone_manager.active_tool != self:  # Manager already in use by another tool
+		return
+	if !bone_manager.selected_gizmo:  # If no bone is selected then do not proceed further
+		return
+
+	# Checks if user intends of transform bone or just move the gizmo only
+	var is_transforming = not Input.is_key_pressed(KEY_CTRL)
+	# We need mouse_point to be a Vector2 in order for rotation to work properly.
+	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
+	# Mouse offset between this frame and previous frame
+	var offset := mouse_point - _prev_mouse_position
+
+	# If user wants to transform, has chaining enabled and the bone has a valid parent.
+	if (
+		_allow_chaining
+		and bone_manager.bone_has_parent(bone_manager.selected_gizmo)
+		and is_transforming
+	):
+		match bone_manager.selected_gizmo.modify_mode:  # This manages chaining
+			SkeletonGizmo.DISPLACE:
+				if _use_ik:
+					var update_canvas := true
+					match _ik_protocol:
+						IKAlgorithms.FABRIK:
+							update_canvas = FABRIK.calculate(
+								get_ik_cels(bone_manager.selected_gizmo),
+								mouse_point,
+								_max_ik_itterations,
+								_ik_error_margin
+							)
+						IKAlgorithms.CCDIK:
+							update_canvas = CCDIK.calculate(
+								get_ik_cels(bone_manager.selected_gizmo),
+								mouse_point,
+								_max_ik_itterations,
+								_ik_error_margin
+							)
+					if _live_update and update_canvas:
+						manage_threading_generate_pose()
+					_prev_mouse_position = mouse_point
+					display_props()
+					return  # We don't need to do anything further
+				else:
+					_chained_gizmo = bone_manager.selected_gizmo
+					bone_manager.selected_gizmo = bone_manager.current_frame_bones[
+						bone_manager.selected_gizmo.parent_bone_name
+					]
+					bone_manager.selected_gizmo.modify_mode = SkeletonGizmo.ROTATE
+					bone_manager.selected_gizmo = bone_manager.selected_gizmo
+					_chained_gizmo.modify_mode = SkeletonGizmo.NONE
+	if bone_manager.selected_gizmo.modify_mode == SkeletonGizmo.DISPLACE:
+		if not is_transforming:
+			bone_manager.ignore_render_once = true
+			bone_manager.selected_gizmo.gizmo_origin += offset.rotated(
+				-bone_manager.selected_gizmo.bone_rotation
+			)
+		bone_manager.selected_gizmo.start_point = Vector2i(
+			bone_manager.selected_gizmo.rel_to_origin(mouse_point) - _displace_offset
+		)
+	elif (
+		bone_manager.selected_gizmo.modify_mode == SkeletonGizmo.ROTATE
+		or bone_manager.selected_gizmo.modify_mode == SkeletonGizmo.EXTEND
+	):
+		var localized_mouse_norm: Vector2 = bone_manager.selected_gizmo.rel_to_start_point(
+			mouse_point
+		).normalized()
+		var localized_prev_mouse_norm: Vector2 = bone_manager.selected_gizmo.rel_to_start_point(
+			_prev_mouse_position
+		).normalized()
+		var diff := localized_mouse_norm.angle_to(localized_prev_mouse_norm)
+		if not is_transforming:
+			bone_manager.ignore_render_once = true
+			bone_manager.selected_gizmo.gizmo_rotate_origin -= diff
+			if bone_manager.selected_gizmo.modify_mode == SkeletonGizmo.EXTEND:
+				bone_manager.selected_gizmo.gizmo_length = (
+					bone_manager.selected_gizmo.rel_to_start_point(mouse_point).length()
+				)
+		else:
+			bone_manager.selected_gizmo.bone_rotation -= diff
+			if _allow_chaining and _chained_gizmo:
+				_chained_gizmo.bone_rotation += diff
+	if _live_update:
+		manage_threading_generate_pose()
+	_prev_mouse_position = mouse_point
+	display_props()
+
+
+func draw_end(_pos: Vector2i) -> void:
+	_prev_mouse_position = Vector2.INF
+	_displace_offset = Vector2.ZERO
+	_chained_gizmo = null
+
+	# Do basic check before proceding
+	if !bone_manager:  # Failure at detecting manager
+		return
+	if bone_manager.active_tool != self:  # Manager already in use by another tool
+		return
+	# Release the manager.
+	bone_manager.active_tool = null
+	if !bone_manager.selected_gizmo:  # If no bone is selected then do not proceed further
+		return
+
+	# Render the new pose
+	if bone_manager.selected_gizmo.modify_mode != SkeletonGizmo.NONE:
+		manage_threading_generate_pose()
+		bone_manager.selected_gizmo.modify_mode = SkeletonGizmo.NONE
+	# In chaining mode, during movement (modify_mode == SkeletonGizmo.DISPLACE), we rotate the
+	# parent mode as well, so we should set the parent's modify_mode to SkeletonGizmo.NONE as well.
+	if (
+		_allow_chaining
+		and bone_manager.bone_has_parent(bone_manager.selected_gizmo)
+	):
+		if bone_manager.selected_gizmo.modify_mode == SkeletonGizmo.DISPLACE:
+			bone_manager.current_frame_bones[
+				bone_manager.selected_gizmo.parent_bone_name
+			].modify_mode = SkeletonGizmo.NONE
+
+	# Set project as changed and display bone properties. This auto triggers display_props()
+	api.project.current_project.has_changed = true
+
+
+## Feature to quickly set bones to the center of their assigned textures
+func quick_set_bones(bone_id: int):
+	if bone_manager:
+		var bone_names = get_selected_bone_names(quick_set_bones_menu.get_popup(), bone_id)
+		var new_data = bone_manager.current_frame_data.duplicate(true)
+		for layer_idx: int in api.project.current_project.layers.size():
+			var bone_name: StringName = api.project.current_project.layers[layer_idx].name
+			if bone_name in bone_names:
+				new_data[bone_name] = bone_manager.current_frame_bones[bone_name].reset_bone(
+					{"gizmo_origin": Vector2(bone_manager.get_best_origin(layer_idx))}
+				)
+		bone_manager.current_frame_data = new_data
+		bone_manager.save_frame_info(api.project.current_project)
+		bone_manager.queue_redraw()
+		bone_manager.generate_pose()
+
+
+## Feature to copy the bone information from one frame to another.
+func copy_bone_data(bone_id: int, from_frame: int, popup: PopupMenu, old_current_frame: int):
+	if bone_manager:
+		if old_current_frame != bone_manager.current_frame:
+			return
+		var bone_names := get_selected_bone_names(popup, bone_id)
+		var new_data = bone_manager.current_frame_data.duplicate(true)
+		var copy_data: Dictionary = bone_manager.load_frame_info(
+			api.project.current_project, from_frame
+		)
+		for bone_name in bone_names:
+			if bone_name in bone_manager.current_frame_bones.keys():
+				new_data[bone_name] = bone_manager.current_frame_bones[bone_name].reset_bone(
+					copy_data.get(bone_name, {})
+				)
+		bone_manager.current_frame_data = new_data
+		bone_manager.save_frame_info(api.project.current_project)
+		bone_manager.queue_redraw()
+		bone_manager.generate_pose()
+		copy_pose_from.get_popup().hide()
+		copy_pose_from.get_popup().clear(true)  # To save Memory
+
+
+## Refreshes the bone's pose
+func refresh_pose(refresh_mode: int):
+	if bone_manager:
+		var frames := [bone_manager.current_frame]
+		if refresh_mode == 0:  # All frames
+			frames = range(0, api.project.current_project.frames.size())
+		for frame_idx in frames:
+			bone_manager.generate_pose(frame_idx)
+
+
+## Feature to tween the skeleton
+func tween_skeleton_data(bone_id: int, from_frame: int, popup: PopupMenu, current_frame: int):
+	if bone_manager:
+		if current_frame != bone_manager.current_frame:
+			return
+		var bone_names := get_selected_bone_names(popup, bone_id)
+		var start_data: Dictionary = bone_manager.load_frame_info(
+			api.project.current_project, from_frame
+		)
+		var end_data: Dictionary = bone_manager.load_frame_info(
+			api.project.current_project, current_frame
+		)
+		for frame_idx in range(from_frame + 1, current_frame):
+			var frame_info: Dictionary = bone_manager.load_frame_info(
+				api.project.current_project, frame_idx
+			)
+			for bone_name in bone_names:
+				if (
+					bone_name in frame_info.keys()
+					and bone_name in start_data.keys()
+					and bone_name in end_data.keys()
+				):
+					var bone_dict: Dictionary = frame_info[bone_name]
+					for data_key: String in bone_dict.keys():
+						if typeof(bone_dict[data_key]) != TYPE_STRING:
+							bone_dict[data_key] = Tween.interpolate_value(
+								start_data[bone_name][data_key],
+								end_data[bone_name][data_key] - start_data[bone_name][data_key],
+								frame_idx - from_frame,
+								current_frame - from_frame,
+								Tween.TRANS_LINEAR,
+								Tween.EASE_IN
+							)
+			bone_manager.save_frame_info(api.project.current_project, frame_info, frame_idx)
+			bone_manager.generate_pose(frame_idx)
+		copy_pose_from.get_popup().hide()
+		copy_pose_from.get_popup().clear(true)  # To save Memory
+
+
+## Resets the bone angle
+func reset_bone_angle(bone_id: int):
+	## This rotation will also rotate the child bones as the parent bone's angle is changed.
+	var bone_names := get_selected_bone_names(rotation_reset_menu.get_popup(), bone_id)
+	for bone_name in bone_names:
+		if bone_name in bone_manager.current_frame_bones.keys():
+			bone_manager.current_frame_bones[bone_name].bone_rotation = 0
+	bone_manager.queue_redraw()
+	bone_manager.generate_pose()
+
+
+## Resets the bone position
+func reset_bone_position(bone_id: int):
+	var bone_names := get_selected_bone_names(position_reset_menu.get_popup(), bone_id)
+	for bone_name in bone_names:
+		if bone_name in bone_manager.current_frame_bones.keys():
+			bone_manager.current_frame_bones[bone_name].start_point = Vector2.ZERO
+	bone_manager.queue_redraw()
+	bone_manager.generate_pose()
+
+
+## Popup Handlers
+
+
+func _on_quick_set_bones_menu_about_to_popup() -> void:
+	if bone_manager:
+		populate_popup(quick_set_bones_menu.get_popup())
+
+
+func _on_rotation_reset_menu_about_to_popup() -> void:
+	if bone_manager:
+		populate_popup(rotation_reset_menu.get_popup(), {"bone_rotation": 0})
+
+
+func _on_position_reset_menu_about_to_popup() -> void:
+	if bone_manager:
+		populate_popup(position_reset_menu.get_popup(), {"start_point": Vector2.ZERO})
+
+
+func _on_copy_pose_from_about_to_popup() -> void:
+	var popup := copy_pose_from.get_popup()
+	popup.clear(true)
+	if !bone_manager:
+		return
+	var project = api.project.current_project
+	var reference_bone_data: Dictionary = bone_manager.current_frame_data
+	for frame_idx in api.project.current_project.frames.size():
+		if bone_manager.current_frame == frame_idx:
+			# It won't make a difference if we skip it or not (as the system will autoatically)
+			# skip it anyway (but it's bet to skip it ourselves to avoid unnecessary calculations)
+			continue
+		var frame_data: Dictionary = bone_manager.load_frame_info(project, frame_idx)
+		if (
+			frame_data != bone_manager.current_frame_data  # Different pose detected
+		):
+			if reference_bone_data != frame_data:  # Checks if this pose is already added to list
+				reference_bone_data = frame_data  # Mark this pose as seen
+				var popup_submenu = PopupMenu.new()
+				popup_submenu.about_to_popup.connect(
+					populate_popup.bind(popup_submenu, reference_bone_data)
+				)
+				popup.add_submenu_node_item(str("Frame ", frame_idx + 1), popup_submenu)
+				popup_submenu.index_pressed.connect(
+					copy_bone_data.bind(frame_idx, popup_submenu, bone_manager.current_frame)
+				)
+
+
+func _on_force_refresh_pose_about_to_popup() -> void:
+	var popup := force_refresh_pose.get_popup()
+	popup.clear(true)
+	popup.add_item("All Frames")
+	popup.add_separator()
+	popup.add_item(str("Current Frame"))
+
+
+func _on_tween_skeleton_about_to_popup() -> void:
+	var popup := tween_skeleton_menu.get_popup()
+	var project = api.project.current_project
+	popup.clear(true)
+	popup.add_separator("Start From")
+	var reference_bone_data: Dictionary = bone_manager.current_frame_data
+	for frame_idx in api.project.current_project.frames.size():
+		if frame_idx >= bone_manager.current_frame - 1:
+			break
+		var frame_data: Dictionary = bone_manager.load_frame_info(project, frame_idx)
+		if (
+			frame_data != bone_manager.current_frame_data  # Different pose detected
+		):
+			if reference_bone_data != frame_data:  # Checks if this pose is already added to list
+				reference_bone_data = frame_data  # Mark this pose as seen
+				var popup_submenu = PopupMenu.new()
+				popup_submenu.about_to_popup.connect(
+					populate_popup.bind(popup_submenu, reference_bone_data)
+				)
+				popup.add_submenu_node_item(str("Frame ", frame_idx + 1), popup_submenu)
+				popup_submenu.index_pressed.connect(
+					tween_skeleton_data.bind(frame_idx, popup_submenu, bone_manager.current_frame)
+				)
+
+
+## Helper methods
+
+
 func populate_popup(popup: PopupMenu, reference_properties := {}):
 	popup.clear()
-	if !skeleton_manager:
+	if !bone_manager:
 		return
-	if skeleton_manager.group_names_ordered.is_empty():
+	if bone_manager.group_names_ordered.is_empty():
 		return
 	popup.add_item("All Bones")
 	var items_added_after_prev_separator := true
-	for bone_key in skeleton_manager.group_names_ordered:
+	for bone_key in bone_manager.group_names_ordered:
 		var bone_reset_reference = reference_properties
-		if bone_key in skeleton_manager.current_frame_bones.keys():
-			var bone = skeleton_manager.current_frame_bones[bone_key]
+		if bone_key in bone_manager.current_frame_bones.keys():
+			var bone = bone_manager.current_frame_bones[bone_key]
 			if bone.parent_bone_name == "" and items_added_after_prev_separator:  ## Root nodes
 				popup.add_separator(str("Root:", bone.bone_name))
 				items_added_after_prev_separator = false
@@ -742,7 +883,7 @@ func populate_popup(popup: PopupMenu, reference_properties := {}):
 
 
 func get_selected_bone_names(popup: PopupMenu, bone_index: int) -> PackedStringArray:
-	var frame_bones: Array = skeleton_manager.group_names_ordered
+	var frame_bones: Array = bone_manager.group_names_ordered
 	var bone_names = PackedStringArray()
 	if bone_index == 0: # All bones
 		bone_names = frame_bones
@@ -751,47 +892,11 @@ func get_selected_bone_names(popup: PopupMenu, bone_index: int) -> PackedStringA
 		bone_names.append(bone_name)
 		if _include_children:
 			for bone_key: String in frame_bones:
-				if bone_key in skeleton_manager.current_frame_bones.keys():
-					var bone = skeleton_manager.current_frame_bones[bone_key]
+				if bone_key in bone_manager.current_frame_bones.keys():
+					var bone = bone_manager.current_frame_bones[bone_key]
 					if bone.parent_bone_name in bone_names:
 						bone_names.append(bone.bone_name)
 	return bone_names
-
-
-## This manages the hovering mechanism of gizmo
-func cursor_move(pos: Vector2i) -> void:
-	var global = api.general.get_global()
-	if skeleton_manager.selected_gizmo:  # Check if we are still hovering over the same gizmo
-		if (
-			skeleton_manager.selected_gizmo.hover_mode(pos, global.camera.zoom) == NONE
-			and skeleton_manager.selected_gizmo.modify_mode == NONE
-		):
-			skeleton_manager.selected_gizmo = null
-	if !skeleton_manager.selected_gizmo:  # If in the prevoius check we deselected the gizmo then search for a new one.
-		for bone in skeleton_manager.current_frame_bones.values():
-			if (
-				bone.hover_mode(pos, global.camera.zoom) != NONE
-				or bone.modify_mode != NONE
-			):
-				var skip_gizmo := false
-				if (
-					_allow_chaining
-					and (
-						bone.modify_mode == ROTATE
-						or bone.hover_mode(pos, global.camera.zoom) == ROTATE
-						)
-				):
-					# Check if bone is a parent of anything (if it has, skip it)
-					for other_gizmo in skeleton_manager.current_frame_bones.values():
-						if other_gizmo.bone_name == bone.parent_bone_name:
-							skip_gizmo = true
-							break
-				if skip_gizmo:
-					continue
-				skeleton_manager.selected_gizmo = bone
-				skeleton_manager.update_frame_data()
-				break
-		skeleton_manager.queue_redraw()
 
 
 func display_props():
@@ -799,27 +904,35 @@ func display_props():
 		_rot_slider.value_changed.disconnect(_on_rotation_changed)
 		_pos_slider.value_changed.disconnect(_on_position_changed)
 	if (
-		current_selected_bone in skeleton_manager.current_frame_bones.values()
-		and skeleton_manager.current_frame == api.project.current_project.current_frame
+		bone_manager.selected_gizmo in bone_manager.current_frame_bones.values()
+		and bone_manager.current_frame == api.project.current_project.current_frame
 	):
-		%BoneProps.visible = true
-		%BoneLabel.text = tr("Name:") + " " + current_selected_bone.bone_name
-		_rot_slider.value = rad_to_deg(current_selected_bone.bone_rotation)
-		_pos_slider.value = current_selected_bone.rel_to_canvas(
-			current_selected_bone.start_point
+		bone_props.visible = true
+		%BoneLabel.text = tr("Name:") + " " + bone_manager.selected_gizmo.bone_name
+		_rot_slider.value = rad_to_deg(bone_manager.selected_gizmo.bone_rotation)
+		_pos_slider.value = bone_manager.selected_gizmo.rel_to_canvas(
+			bone_manager.selected_gizmo.start_point
 		)
 		_rot_slider.value_changed.connect(_on_rotation_changed)
 		_pos_slider.value_changed.connect(_on_position_changed)
 	else:
-		%BoneProps.visible = false
+		bone_props.visible = false
 
 
-func _on_project_data_changed(_project):
-	display_props()
+func manage_threading_generate_pose():
+	if ProjectSettings.get_setting("rendering/driver/threads/thread_model") != 2:
+		bone_manager.generate_pose()
+	else:  # Multi-threaded mode (Currently pixelorama is single threaded)
+		if not live_thread.is_alive():
+			var error := live_thread.start(bone_manager.generate_pose)
+			if error != OK:  # Thread failed, so do this the hard way.
+				bone_manager.generate_pose()
 
 
 ## Placeholder functions that are a necessity to be here
 func draw_indicator(_left: bool) -> void:
 	return
 func draw_preview() -> void:
+	pass
+func cursor_move(_pos: Vector2i) -> void:
 	pass

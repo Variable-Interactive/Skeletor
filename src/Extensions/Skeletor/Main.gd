@@ -19,7 +19,7 @@ func _enter_tree() -> void:
 		"Skeleton",
 		"res://src/Extensions/Skeletor/Tool/skeleton_tool.tscn",
 		[0],
-		"Hint",
+		"Mouse Left/Right to transform bones \n Ctrl + Mouse Left/Right to displace bones",
 		)
 
 	load_dialog = FileDialog.new()
@@ -30,10 +30,11 @@ func _enter_tree() -> void:
 	load_dialog.size = Vector2i(675, 400)
 	load_dialog.file_selected.connect(load_skeleton)
 	api.dialog.get_dialogs_parent_node().add_child(load_dialog)
+	menu_id = api.menu.add_menu_item(api.menu.PROJECT, "Load Skeleton", self)
+
 	var format_info = {"extension": ".skeletor", "description": "Skeletor skeleton"}
 	exporter_id = api.export.add_export_option(format_info, self)
 
-	menu_id = api.menu.add_menu_item(api.menu.PROJECT, "Load Skeleton", self)
 
 func _exit_tree() -> void:  # Extension is being uninstalled or disabled
 	api.tools.remove_tool("skeleton")
