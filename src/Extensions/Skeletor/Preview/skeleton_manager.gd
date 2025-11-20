@@ -30,6 +30,8 @@ var pose_layer:  ## The layer in which a pose is rendered
 		assign_pose_layer(value)
 var generation_cache: Dictionary
 var active_skeleton_tools := Array()
+var rotation_generator: RefCounted
+var blend_generator: RefCounted
 
 
 func bone_has_parent(bone: SkeletonGizmo):
@@ -40,14 +42,13 @@ func update_bone_property(parent_name: String, property: String, should_propagat
 	if not is_instance_valid(project):
 		return
 	# First we update data of parent bone
-	current_frame_data = load_frame_info(project)
+	if current_frame_data.is_empty():
+		current_frame_data = load_frame_info(project)
 	if not parent_name in current_frame_data.keys():
 		update_frame_data()
 	var parent: SkeletonGizmo = current_frame_bones[parent_name]
 	if parent.get(property) != current_frame_data[parent_name][property]:
 		current_frame_data[parent_name][property] = parent.get(property)
-		save_frame_info(project)
-
 	if !should_propagate or ignore_render_once:
 		# If ignore_render_once is true this probably beans we are in the process of modifying
 		# "Individual" properties of the bone and don't want them to propagate down the
@@ -79,6 +80,8 @@ func _ready() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 
+	rotation_generator = api.general.get_new_shader_image_effect()
+	blend_generator = api.general.get_new_shader_image_effect()
 	manage_project_changed(true)
 	assign_pose_button_id = api.menu.add_menu_item(api.menu.PROJECT, "Assign Pose layer", self)
 	global.project_about_to_switch.connect(manage_project_changed.bind(false))
@@ -196,7 +199,6 @@ func _input(event: InputEvent) -> void:
 				if skip_gizmo:
 					continue
 				hover_gizmo = bone
-				update_frame_data()
 				break
 		queue_redraw()
 
@@ -219,6 +221,7 @@ func generate_pose(for_frame := current_frame) -> void:
 		return
 	if for_frame == -1:  # for_frame is not defined
 		return
+	save_frame_info(project)
 	manage_signals(true)  # Trmporarily disconnect signals
 	var image = Image.create_empty(project.size.x, project.size.y, false, Image.FORMAT_RGBA8)
 	if current_frame_data.is_empty():  # No pose to generate (This is a kind of failsafe)
@@ -234,7 +237,6 @@ func generate_pose(for_frame := current_frame) -> void:
 	var previous_ordered_layers: Array[int] = project.ordered_layers
 	project.order_layers(for_frame)
 	var textures: Array[Image] = []
-	var gen = api.general.get_new_shader_image_effect()
 	# Nx4 texture, where N is the number of layers and the first row are the blend modes,
 	# the second are the opacities, the third are the origins and the fourth are the
 	# clipping mask booleans.
@@ -257,7 +259,7 @@ func generate_pose(for_frame := current_frame) -> void:
 			cel_image = layer.display_effects(cel)
 
 		if is_instance_valid(group_layer):
-			_apply_bone(gen, group_layer.name, cel_image, for_frame)
+			_apply_bone(group_layer.name, cel_image, for_frame)
 
 		textures.append(cel_image)
 		if (
@@ -275,7 +277,7 @@ func generate_pose(for_frame := current_frame) -> void:
 		"metadata": ImageTexture.create_from_image(metadata_image),
 	}
 	var blended := Image.create_empty(project.size.x, project.size.y, false, image.get_format())
-	gen.generate_image(blended, blend_layer_shader, params, project.size)
+	blend_generator.generate_image(blended, blend_layer_shader, params, project.size, true, false)
 	image.blend_rect(blended, Rect2i(Vector2.ZERO, project.size), Vector2.ZERO)
 	# Re-order the layers again to ensure correct canvas drawing
 	project.ordered_layers = previous_ordered_layers
@@ -558,7 +560,7 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 		draw_string(font, Vector2(3, -3), gizmo.bone_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, bone_color)
 
 
-func _apply_bone(gen, bone_name: String, cel_image: Image, at_frame := current_frame) -> void:
+func _apply_bone(bone_name: String, cel_image: Image, at_frame := current_frame) -> void:
 	var frame_data = current_frame_data
 	if at_frame != current_frame:
 		frame_data = load_frame_info(api.project.current_project, at_frame)
@@ -608,10 +610,12 @@ func _apply_bone(gen, bone_name: String, cel_image: Image, at_frame := current_f
 		if cache_key in bone_cache.keys():
 			square_image = bone_cache[cache_key]
 		else:
-			gen.generate_image(
+			rotation_generator.generate_image(
 				square_image,
-				api.general.get_drawing_algos().nn_shader,
-				rotate_params, square_image.get_size()
+				api.general.get_drawing_algos().clean_edge_shader,
+				rotate_params, square_image.get_size(),
+				true,
+				false
 			)
 			bone_cache.clear()
 			bone_cache[cache_key] = square_image
