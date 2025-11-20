@@ -266,7 +266,7 @@ func _ready() -> void:
 		_chain_size_slider.allow_lesser = false
 		_chain_size_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_chain_size_slider.prefix = tr("Chain Size:")
-		_chain_size_slider.min_value = 0
+		_chain_size_slider.min_value = 1
 		_chain_size_slider.max_value = 10
 		_chain_size_slider.step = 1
 		_chain_size_slider.name = "ChainSize"
@@ -278,7 +278,7 @@ func _ready() -> void:
 		_itteration_slider.allow_lesser = false
 		_itteration_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_itteration_slider.prefix = tr("Itterations:")
-		_itteration_slider.min_value = 0
+		_itteration_slider.min_value = 1
 		_itteration_slider.max_value = 100
 		_itteration_slider.step = 1
 		_itteration_slider.name = "IKIterations"
