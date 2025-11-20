@@ -419,10 +419,8 @@ func layer_name_changed(layer, old_name: String) -> void:
 				if layer.parent:
 					rename_data["parent_bone_name"] = layer.parent.name
 				current_frame_data[layer.name] = rename_data
-				print(layer.name, rename_data)
 				layer.name_changed.connect(layer_name_changed.bind(layer, layer.name))
 			else: ## It's a new bone
-				print("New bone detected")
 				var layer_parent_name = ""
 				if layer.parent:
 					layer_parent_name = layer.parent.name
@@ -451,6 +449,7 @@ func _draw() -> void:
 			bone.serialize(current_frame_data[bone_name])
 			bone.update_property.connect(update_bone_property.bind(project))
 			current_frame_bones[bone_name] = bone
+	for bone_name: String in group_names:
 		_draw_gizmo(current_frame_bones[bone_name], global.camera.zoom)
 
 
@@ -495,7 +494,9 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 	gizmo.ignore_rotation_hover = bones_chained
 	var skip_rotation_gizmo := false
 	if bones_chained:
+		var names = []
 		for other_gizmo: SkeletonGizmo in current_frame_bones.values():
+			names.append(other_gizmo.parent_bone_name)
 			if other_gizmo.parent_bone_name == gizmo.bone_name:
 				skip_rotation_gizmo = true
 				break
