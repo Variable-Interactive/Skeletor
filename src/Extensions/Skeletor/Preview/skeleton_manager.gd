@@ -333,6 +333,7 @@ func generate_pose(for_frame: int = current_frame) -> void:
 
 	var texture_array := Texture2DArray.new()
 	if textures.is_empty():
+		manage_ui_signals()
 		return
 	texture_array.create_from_images(textures)
 	var params := {
