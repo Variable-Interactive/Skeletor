@@ -3,25 +3,28 @@
   
 [![Thumbnail](https://github.com/user-attachments/assets/3f5ec294-600e-4cd4-9049-7c0124801662)](https://youtu.be/RqCqg34G6Zg)
 
-</div>[Character Demo (Extract Me).zip]()
+</div>
 
 
 ## Demo Projects
 This is a pixelorama extension that add basic Skeletal animation capabilities to the software. You may play with this extension on one of the Demo Projects below.
 
-<table>
-  <tr>
-    <td>
-      <a href="https://github.com/user-attachments/files/23674501/Turret.Demo.Extract.Me.zip"><img src="https://github.com/user-attachments/assets/ae5837e2-e363-4312-85fe-882eb3250bc5"  alt="Turret Demo" width = 256px height = 256px >
-    </td>
-    <td>
-      <a href="https://github.com/user-attachments/files/23674862/Character.Demo.Extract.Me.zip"><img src="https://github.com/user-attachments/assets/d692e6c0-3e25-468d-99b3-01df46a77438" alt="Character Demo" width = 209px height = 301px>
-    </td>
-    <td>
-       <a href="https://github.com/user-attachments/files/23676748/Snake.Demo.Extract.Me.zip"><img src="https://github.com/user-attachments/assets/4bcdfcd3-454a-41fe-8d0e-1db5710014e6" alt="Snake Demo" width = 276px height = 300px>
-    </td>
+<table style="margin-left:auto; margin-right:auto;">
+  <tbody><tr>
+    <td><h2>Laser Gun</h2></td>
+    <td><h2>Robot</h2></td><td><h2><strong>Snake</strong></h2></td>
   </tr>
-</table>
+    <tr><td>
+      <a href="https://github.com/user-attachments/files/23674501/Turret.Demo.Extract.Me.zip"><img src="https://github.com/user-attachments/assets/ae5837e2-e363-4312-85fe-882eb3250bc5" alt="Turret Demo" width="256px" height="256px">
+    </a></td>
+    <td>
+      <a href="https://github.com/user-attachments/files/23674862/Character.Demo.Extract.Me.zip"><img src="https://github.com/user-attachments/assets/d692e6c0-3e25-468d-99b3-01df46a77438" alt="Character Demo" width="209px" height="301px">
+    </a></td>
+    <td>
+       <a href="https://github.com/user-attachments/files/23676748/Snake.Demo.Extract.Me.zip"><img src="https://github.com/user-attachments/assets/4bcdfcd3-454a-41fe-8d0e-1db5710014e6" alt="Snake Demo" width="276px" height="300px">
+    </a></td>
+  </tr>
+</tbody></table>
 
 ## Highlight Features:
 <div align=center>
@@ -59,6 +62,21 @@ https://github.com/user-attachments/assets/3f2f8328-a181-4533-80fe-db4521b1140d
 
 ## Controls (parts of the bone):
 The extension gives you access to a new **Skeleton** tool (![Tool Image](https://github.com/user-attachments/assets/6002d741-87f9-42b2-9aee-acbb61bc91c0))
+
+<table style="margin-left:auto; margin-right:auto;">
+  <tbody><tr>
+    <td><h2>Movement</h2></td>
+    <td><h2>Rotation</h2></td>
+  </tr>
+    <tr><td>
+      <img src="https://github.com/user-attachments/assets/ab7552fd-81e9-4e55-98fc-8224a2347669" alt="Movement" width="300px" height="300px">
+    </a></td>
+    <td>
+      <img src="https://github.com/user-attachments/assets/7f7689fa-aa34-4b20-8963-e20e577604a7" alt="Rotation" width="300px" height="300px">
+    </a></td>
+    
+  </tr>
+</tbody></table>
 
 1. **The bigger circle** is the pivot, the image of the bone will rotate around this pivot. The pivot is set by hovering over the circle then hold (`Ctrl` + `Left/Right` click) key and move the mouse. Also, moving the pivot using (`Left/Right` click) will move the image instead of setting pivot.
 2. **Smaller circle** controls rotation. Hold (`Ctrl` + `Left/Right` click) with mouse movement to move the circle without rotating the image (this is just to move it somewhere more comfortable). Holding (`Left/Right` click) and mouse movement Will rotate image.
