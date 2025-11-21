@@ -701,6 +701,7 @@ func menu_item_clicked():
 	var current_layer = project.layers[project.current_layer]
 	if !pose_layer and current_layer.get_layer_type() == 0:
 		pose_layer = current_layer
+		update_frame_data()
 
 
 func assign_pose_layer(layer) -> void:
