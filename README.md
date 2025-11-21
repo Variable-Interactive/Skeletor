@@ -5,7 +5,10 @@
 
 </div>
 
+## Demo Projects
 This is a pixelorama extension that add basic Skeletal animation capabilities to the software. You may play with this extension on [a Demo Project](https://github.com/user-attachments/files/18762945/Demo.Project.Extract.me.zip).
+
+[![Turret](https://github.com/user-attachments/assets/ae5837e2-e363-4312-85fe-882eb3250bc5)](https://github.com/user-attachments/files/23674501/Turret.Demo.Extract.Me.zip)
 
 ## Highlight Features:
 <div align=center>
