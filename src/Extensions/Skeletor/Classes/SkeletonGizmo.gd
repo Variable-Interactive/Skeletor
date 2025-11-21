@@ -52,7 +52,7 @@ var gizmo_length: int:
 var end_point: Vector2:  ## This is relative to the gizmo_origin
 	get():
 		return Vector2(gizmo_length, 0).rotated(gizmo_rotate_origin + bone_rotation)
-var modify_mode := SkeletonGizmo.NONE
+var modify_mode: int = SkeletonGizmo.NONE
 var ignore_rotation_hover := false
 var should_update_silently := false
 

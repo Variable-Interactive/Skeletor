@@ -8,7 +8,7 @@ var api: Node
 var tool_slot
 var kname: String
 var cursor_text := ""
-var bone_manager: Node2D
+var bone_manager: BoneManager
 var generation_threshold: float = 20
 var live_thread := Thread.new()
 
@@ -489,7 +489,7 @@ func _on_ik_error_margin_value_changed(value: float) -> void:
 ## Used to reverse stuff done in _ready or _enter_tree methods
 func _exit_tree() -> void:
 	if bone_manager:  # Let the manager know this tool is no longer present
-		bone_manager.announce_tool_removal(self)
+		bone_manager.active_skeleton_tools.erase(self)
 		bone_manager.queue_redraw()
 	if api:  # Disconnect any remaining rogue signals
 		api.signals.signal_cel_switched(display_props, true)
@@ -522,7 +522,7 @@ func draw_start(_pos: Vector2i) -> void:
 		_prev_mouse_position = mouse_point
 	# In chaining mode, during movement (modify_mode == SkeletonGizmo.DISPLACE), we rotate the
 	# parent mode as well, so we should set the parent's modify_mode to SkeletonGizmo.NONE as well.
-	if _allow_chaining and bone_manager.bone_has_parent(bone_manager.selected_gizmo):
+	if _allow_chaining and bone_manager.is_bone_parent_valid(bone_manager.selected_gizmo):
 		var parent_bone = bone_manager.current_frame_bones[
 			bone_manager.selected_gizmo.parent_bone_name
 		]
@@ -549,17 +549,19 @@ func draw_move(_pos: Vector2i) -> void:
 	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
 	# Mouse offset between this frame and previous frame
 	var offset := mouse_point - _prev_mouse_position
+	# Determines if our movement this time waranted a new render
+	var ignore_render_this_frame := false
 
 	# If user wants to transform, has chaining enabled and the bone has a valid parent.
 	if (
 		_allow_chaining
-		and bone_manager.bone_has_parent(bone_manager.selected_gizmo)
+		and bone_manager.is_bone_parent_valid(bone_manager.selected_gizmo)
 		and is_transforming
 	):
 		match bone_manager.selected_gizmo.modify_mode:  # This manages chaining
 			SkeletonGizmo.DISPLACE:
 				if _use_ik:
-					var update_canvas := true
+					var update_canvas := true  # Keeps track if the Algorithm was successful
 					match _ik_protocol:
 						IKAlgorithms.FABRIK:
 							update_canvas = FABRIK.calculate(
@@ -590,13 +592,16 @@ func draw_move(_pos: Vector2i) -> void:
 					_chained_gizmo.modify_mode = SkeletonGizmo.NONE
 	if bone_manager.selected_gizmo.modify_mode == SkeletonGizmo.DISPLACE:
 		if not is_transforming:
-			bone_manager.ignore_render_once = true
+			ignore_render_this_frame = true
+			# Pause chain propagation for the start_point property that will be changed after this
+			bone_manager.selected_gizmo.should_update_silently = true
 			bone_manager.selected_gizmo.gizmo_origin += offset.rotated(
 				-bone_manager.selected_gizmo.bone_rotation
 			)
 		bone_manager.selected_gizmo.start_point = Vector2i(
 			bone_manager.selected_gizmo.rel_to_origin(mouse_point) - _displace_offset
 		)
+		bone_manager.selected_gizmo.should_update_silently = false  # Reset this property here
 	elif (
 		bone_manager.selected_gizmo.modify_mode == SkeletonGizmo.ROTATE
 		or bone_manager.selected_gizmo.modify_mode == SkeletonGizmo.EXTEND
@@ -609,17 +614,17 @@ func draw_move(_pos: Vector2i) -> void:
 		).normalized()
 		var diff := localized_mouse_norm.angle_to(localized_prev_mouse_norm)
 		if not is_transforming:
-			bone_manager.ignore_render_once = true
+			ignore_render_this_frame = true
 			bone_manager.selected_gizmo.gizmo_rotate_origin -= diff
 			if bone_manager.selected_gizmo.modify_mode == SkeletonGizmo.EXTEND:
-				bone_manager.selected_gizmo.gizmo_length = (
+				bone_manager.selected_gizmo.gizmo_length = int(
 					bone_manager.selected_gizmo.rel_to_start_point(mouse_point).length()
 				)
 		else:
 			bone_manager.selected_gizmo.bone_rotation -= diff
 			if _allow_chaining and _chained_gizmo:
 				_chained_gizmo.bone_rotation += diff
-	if _live_update:
+	if _live_update and not ignore_render_this_frame:
 		manage_threading_generate_pose()
 	_prev_mouse_position = mouse_point
 	display_props()
@@ -648,7 +653,7 @@ func draw_end(_pos: Vector2i) -> void:
 	# parent mode as well, so we should set the parent's modify_mode to SkeletonGizmo.NONE as well.
 	if (
 		_allow_chaining
-		and bone_manager.bone_has_parent(bone_manager.selected_gizmo)
+		and bone_manager.is_bone_parent_valid(bone_manager.selected_gizmo)
 	):
 		if bone_manager.selected_gizmo.modify_mode == SkeletonGizmo.DISPLACE:
 			bone_manager.current_frame_bones[

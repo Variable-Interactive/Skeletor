@@ -1,3 +1,4 @@
+class_name BoneManager
 extends Node2D
 
 var api: Node
@@ -20,7 +21,6 @@ var current_frame: int = -1
 var prev_layer_count: int = 0
 var prev_frame_count: int = 0
 var assign_pose_button_id: int
-var ignore_render_once := false  ## used to check if we need a new render or not (used in _input())
 var queue_generate := false
 # The shader is located in pixelorama
 var blend_layer_shader = load("res://src/Shaders/BlendLayers.gdshader")
@@ -34,28 +34,31 @@ var rotation_generator: RefCounted
 var blend_generator: RefCounted
 
 
-func bone_has_parent(bone: SkeletonGizmo):
+## These are Gizmo related methods, that for one reason or another can't be placed in the
+## SkeletonGizmo class
+
+## Checks if the bone's parent is a valid part of the skeleton
+func is_bone_parent_valid(bone: SkeletonGizmo) -> bool:
 	return bone.parent_bone_name in current_frame_bones.keys()
 
-
+## If a propagatable property (movement, rotation) is done on a SkeletonGizmo object, this method
+## Gets called automatically to update/transform all it's children automatically as well
 func update_bone_property(parent_name: String, property: String, should_propagate: bool, diff, project):
 	if not is_instance_valid(project):
 		return
 	# First we update data of parent bone
 	if current_frame_data.is_empty():
 		current_frame_data = load_frame_info(project)
-	if not parent_name in current_frame_data.keys():
+	if not parent_name in current_frame_data.keys():  # Failsafe, makes sure everything is in order.
 		update_frame_data()
 	var parent: SkeletonGizmo = current_frame_bones[parent_name]
 	if parent.get(property) != current_frame_data[parent_name][property]:
 		current_frame_data[parent_name][property] = parent.get(property)
-	if !should_propagate or ignore_render_once:
-		# If ignore_render_once is true this probably beans we are in the process of modifying
-		# "Individual" properties of the bone and don't want them to propagate down the
-		# chain.
+	# Do not proceed further if a property isn't meant to propagate
+	if !should_propagate:
 		return
 	for layer in project.layers:  ## update first child (This will trigger a chain process)
-		if layer.get_layer_type() == 1 and layer.parent:  # GroupLayer
+		if layer.get_layer_type() == global.LayerTypes.GROUP and layer.parent:
 			if current_frame_bones[layer.name].parent_bone_name != layer.parent.name:
 				current_frame_bones[layer.name].parent_bone_name = layer.parent.name
 			if layer.parent.name == parent_name:
@@ -72,6 +75,7 @@ func update_bone_property(parent_name: String, property: String, should_propagat
 							parent_bone.rel_to_canvas(parent_bone.start_point) + displacement
 						)
 
+## Default methods
 
 func _ready() -> void:
 	api = get_node_or_null("/root/ExtensionsApi")
@@ -80,72 +84,25 @@ func _ready() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 
+	# Initialize the Shader Processors
 	rotation_generator = api.general.get_new_shader_image_effect()
 	blend_generator = api.general.get_new_shader_image_effect()
-	manage_project_changed(true)
+	# Add the "Assign Pose layer" menu button
 	assign_pose_button_id = api.menu.add_menu_item(api.menu.PROJECT, "Assign Pose layer", self)
-	global.project_about_to_switch.connect(manage_project_changed.bind(false))
+	# Connect the signals to currently open project
+	manage_project_signals(true)
+	# Connect signal to re-draw UI
 	global.camera.zoom_changed.connect(queue_redraw)
-	api.signals.signal_project_switched(manage_project_changed.bind(true))
+	# Initialize signal managers
+	global.project_about_to_switch.connect(manage_project_signals.bind(false))
+	api.signals.signal_project_switched(manage_project_signals.bind(true))
+	tree_exiting.connect(manage_ui_signals.bind(true))
 
 
-## Adds info about any new group cels that are added to the timeline.
-func update_frame_data() -> void:
-	var project = api.project.current_project
-	if (
-		# We moved to a different frame (or moved to the pose layer for the first time.
-		# where we still don't yet know about a pose layer existing in the project)
-		project.current_frame != current_frame
-		# We added a new frame
-		or project.frames.size() != prev_frame_count
-	):
-		prev_frame_count = project.frames.size()
-		current_frame_bones.clear()
-		selected_gizmo = null
-		current_frame = project.current_frame
-		current_frame_data = load_frame_info(project)
-		# The if the frame is new, and there is a skeleton for previous frame then
-		# copy it to this frame as well.
-		if current_frame_data.is_empty() and current_frame != 0:
-			# in cases where we added multiple frames, even the previous frame may not have data
-			# so continue till we find one with data
-			for frame_idx in range(current_frame, -1, -1):
-				var prev_frame_data: Dictionary = load_frame_info(project, frame_idx)
-				if not prev_frame_data.is_empty():
-					current_frame_data = prev_frame_data.duplicate(true)
-					break
-	# If the layer is newly added then we need to refresh the bone tree.
-	if project.layers.size() != prev_layer_count:
-		prev_layer_count = project.layers.size()
-		generate_heirarchy(current_frame_data)
-	save_frame_info(project)
-
-
-func generate_heirarchy(old_data: Dictionary) -> void:
-	var invalid_layer_names := old_data.keys()
-	group_names_ordered.clear()
-	for layer in api.project.current_project.layers:
-		if !pose_layer and layer.get_layer_type() == 0:  ## If user deleted a pose layer then find new one
-			if "Pose Layer" in layer.name.capitalize():
-				pose_layer = layer
-		elif layer.get_layer_type() == 1:  # GroupLayer
-			group_names_ordered.insert(0, layer.name)
-			var parent_name = ""
-			if layer.parent:
-				parent_name = layer.parent.name
-			invalid_layer_names.erase(layer.name)
-			if not layer.name in old_data.keys():
-				old_data[layer.name] = SkeletonGizmo.generate_empty_data(layer.name, parent_name)
-
-		## check connectivity of one of these signals and assume the result for others
-		if not layer.name_changed.is_connected(layer_name_changed):
-			if layer != pose_layer:
-				if layer.get_layer_type() != 1:
-					layer.visibility_changed.connect(generate_pose)
-				layer.effects_added_removed.connect(generate_pose)
-				layer.name_changed.connect(layer_name_changed.bind(layer, layer.name))
-	for layer_name in invalid_layer_names:
-		old_data.erase(layer_name)
+func _exit_tree() -> void:
+	api.menu.remove_menu_item(api.menu.PROJECT, assign_pose_button_id)
+	global.project_about_to_switch.disconnect(manage_project_signals)
+	api.signals.signal_project_switched(manage_project_signals, true)
 
 
 func _input(event: InputEvent) -> void:
@@ -158,7 +115,7 @@ func _input(event: InputEvent) -> void:
 	## This manages the hovering mechanism of gizmo
 	if (
 		not is_pose_layer(project.layers[project.current_layer])
-		or active_skeleton_tools.size() == 0
+		or active_skeleton_tools.is_empty()
 	):
 		return
 	var pos = global.canvas.current_pixel
@@ -209,11 +166,106 @@ func _input(event: InputEvent) -> void:
 		selected_gizmo = hover_gizmo
 
 
-func generate_pose(for_frame := current_frame) -> void:
-	# Do we even need to generate a pose?
-	if ignore_render_once:  # We had set to ignore generation in this cycle.
-		ignore_render_once = false
+func _draw() -> void:
+	if current_frame_data.is_empty():
 		return
+	if active_skeleton_tools.is_empty():
+		return
+	var project = api.project.current_project
+	var group_names: Array = current_frame_data.keys()
+	for bone_name: String in group_names:
+		# before drawing the gizmo, we check if it needs update, or creation first
+		if bone_name in current_frame_bones.keys():
+			var bone = current_frame_bones[bone_name]
+			bone.serialize(current_frame_data[bone_name])
+			if not bone.update_property.is_connected(update_bone_property):
+				bone.update_property.connect(update_bone_property.bind(project))
+		else:
+			var bone = SkeletonGizmo.new()
+			bone.serialize(current_frame_data[bone_name])
+			bone.update_property.connect(update_bone_property.bind(project))
+			current_frame_bones[bone_name] = bone
+	for bone_name: String in group_names:
+		_draw_gizmo(current_frame_bones[bone_name], global.camera.zoom)
+
+
+## Data Updaters (Directly responsible for values in current_frame_data)
+
+
+## Cleans everything and starts from scratch
+func reset_everything() -> void:
+	selected_gizmo = null
+	current_frame_data.clear()
+	current_frame_bones.clear()
+	current_frame = -1
+	prev_layer_count = 0
+	prev_frame_count = 0
+	pose_layer = null
+
+
+## Adds info about any new group cels that are added to the timeline.
+func update_frame_data() -> void:
+	var project = api.project.current_project
+	if (
+		# We moved to a different frame (or moved to the pose layer for the first time.
+		# where we still don't yet know about a pose layer existing in the project)
+		project.current_frame != current_frame
+		# We added a new frame
+		or project.frames.size() != prev_frame_count
+	):
+		prev_frame_count = project.frames.size()
+		current_frame_bones.clear()
+		selected_gizmo = null
+		current_frame = project.current_frame
+		current_frame_data = load_frame_info(project)
+		# The if the frame is new, and there is a skeleton for previous frame then
+		# copy it to this frame as well.
+		if current_frame_data.is_empty() and current_frame != 0:
+			# in cases where we added multiple frames, even the previous frame may not have data
+			# so continue till we find one with data
+			for frame_idx in range(current_frame, -1, -1):
+				var prev_frame_data: Dictionary = load_frame_info(project, frame_idx)
+				if not prev_frame_data.is_empty():
+					current_frame_data = prev_frame_data.duplicate(true)
+					break
+	# If the layer is newly added then we need to refresh the bone tree.
+	if project.layers.size() != prev_layer_count:
+		prev_layer_count = project.layers.size()
+		generate_heirarchy(current_frame_data)
+	save_frame_info(project)
+
+
+func generate_heirarchy(old_data: Dictionary) -> void:
+	var invalid_layer_names := old_data.keys()
+	group_names_ordered.clear()
+	for layer in api.project.current_project.layers:
+		if !pose_layer and layer.get_layer_type() == global.LayerTypes.PIXEL:
+			# If user deleted a pose layer then try to find a new one
+			if "Pose Layer" in layer.name.capitalize():
+				pose_layer = layer
+		elif layer.get_layer_type() == global.LayerTypes.GROUP:
+			group_names_ordered.insert(0, layer.name)
+			var parent_name = ""
+			if layer.parent:
+				parent_name = layer.parent.name
+			invalid_layer_names.erase(layer.name)
+			if not layer.name in old_data.keys():
+				old_data[layer.name] = SkeletonGizmo.generate_empty_data(layer.name, parent_name)
+
+		## check connectivity of one of these signals and assume the result for others
+		if not layer.name_changed.is_connected(_on_layer_name_changed):
+			if layer != pose_layer:
+				if layer.get_layer_type() != global.LayerTypes.GROUP:
+					layer.visibility_changed.connect(generate_pose)
+				layer.effects_added_removed.connect(generate_pose)
+				layer.name_changed.connect(_on_layer_name_changed.bind(layer, layer.name))
+	for layer_name in invalid_layer_names:
+		old_data.erase(layer_name)
+
+
+func generate_pose(for_frame := current_frame) -> void:
+	print("pose=========================")
+	print_stack()
 	var project = api.project.current_project
 	if not is_sane(project):  # There is no Pose Layer to render to!!!
 		return
@@ -222,13 +274,13 @@ func generate_pose(for_frame := current_frame) -> void:
 	if for_frame == -1:  # for_frame is not defined
 		return
 	save_frame_info(project)
-	manage_signals(true)  # Trmporarily disconnect signals
+	manage_ui_signals(true)  # Trmporarily disconnect UI signals to prevent undesired effects
 	var image = Image.create_empty(project.size.x, project.size.y, false, Image.FORMAT_RGBA8)
 	if current_frame_data.is_empty():  # No pose to generate (This is a kind of failsafe)
 		project.layers[pose_layer.index].locked = false
 		_render_image(image)
 		project.layers[pose_layer.index].locked = true
-		manage_signals()  # Reconnect signals
+		manage_ui_signals()  # Reconnect signals
 		return
 
 	# Start generating
@@ -252,7 +304,9 @@ func generate_pose(for_frame := current_frame) -> void:
 			_set_layer_metadata_image(layer, cel, metadata_image, ordered_index, false)
 			continue
 
-		var include := false if (!layer.visible and layer.get_layer_type() != 1) else true
+		var include := false if (
+			!layer.visible and layer.get_layer_type() != global.LayerTypes.GROUP
+		) else true
 		if layer.is_blender():
 			cel_image = layer.blend_children(frame)
 		else:
@@ -284,109 +338,36 @@ func generate_pose(for_frame := current_frame) -> void:
 	project.layers[pose_layer.index].locked = false
 	_render_image(image, for_frame)
 	project.layers[pose_layer.index].locked = true
-	manage_signals()  # Reconnect signals
+	manage_ui_signals()  # Reconnect signals
 
 
-func _exit_tree() -> void:
-	api.menu.remove_menu_item(api.menu.PROJECT, assign_pose_button_id)
-	global.project_about_to_switch.disconnect(manage_project_changed)
-	api.signals.signal_project_switched(manage_project_changed, true)
-	manage_signals(true)
+## Checks (boolean check used frequently throughout the script)
 
 
-## UPDATERS  (methods that are called through signals)
-
-func manage_signals(is_disconnecting := false) -> void:
-	api.signals.signal_cel_switched(cel_switched, is_disconnecting)
-	api.signals.signal_project_data_changed(project_data_changed, is_disconnecting)
-	api.signals.signal_current_cel_texture_changed(texture_changed, is_disconnecting)
-	if is_disconnecting:
-		global.layer_vbox.child_order_changed.disconnect(project_layers_moved)
-	else:
-
-		if not global.layer_vbox.is_connected("child_order_changed", project_layers_moved):
-			global.layer_vbox.child_order_changed.connect(project_layers_moved)
+## Checks if the provided layer is a PoseLayer
+func is_pose_layer(layer) -> bool:
+	return layer.get_meta("SkeletorPoseLayer", false)
 
 
-# Manages connections of signals that have to be re-determined everytime project switches
-func manage_project_changed(should_connect := false) -> void:
-	var project = api.project.current_project
-	if should_connect:
-		## Add stuff which connects on project changed
-		clean_data()
-		for layer in api.project.current_project.layers:
-			if layer != pose_layer:
-				if layer.get_layer_type() != 1:  # Treatment for simple layers
-					if !layer.visibility_changed.is_connected(generate_pose):
-						layer.visibility_changed.connect(generate_pose)
-				if !layer.name_changed.is_connected(layer_name_changed):  # Treatment for group layers
-					layer.name_changed.connect(layer_name_changed.bind(layer, layer.name))
-					layer.effects_added_removed.connect(generate_pose)
-		await get_tree().process_frame  # Wait for the project to adjust
-		manage_signals()
-		cel_switched()
-		global.canvas.update_all_layers = true
-		global.canvas.queue_redraw()
-	else:
-		## Add stuff which disconnects on project changed
-		manage_signals(true)
-		for layer in api.project.current_project.layers:
-			if layer != pose_layer:
-				if layer.get_layer_type() != 1:  # Treatment for simple layers
-					if layer.visibility_changed.is_connected(generate_pose):
-						layer.visibility_changed.disconnect(generate_pose)
-				if layer.name_changed.is_connected(layer_name_changed):  # Treatment for group layers
-					layer.name_changed.disconnect(layer_name_changed)
-					layer.effects_added_removed.disconnect(generate_pose)
+## This only searches for an "Existing" pose layer.
+## The assignment of pose layers are done in update_frame_data()
+func is_sane(project) -> bool:
+	if pose_layer:
+		if pose_layer.index != project.layers.find(pose_layer):
+			pose_layer = null
+	if not pose_layer in project.layers:
+		pose_layer = find_pose_layer(project)
+		if pose_layer:
+			return true
+		reset_everything()
+		return false
+	return true
 
 
-func clean_data() -> void:
-	selected_gizmo = null
-	current_frame_data.clear()
-	current_frame_bones.clear()
-	current_frame = -1
-	prev_layer_count = 0
-	prev_frame_count = 0
-	ignore_render_once = false
-	pose_layer = null
+## Calculators
 
 
-func texture_changed() -> void:
-	if not is_pose_layer(
-		api.project.current_project.layers[api.project.current_project.current_layer]
-	):
-		queue_generate = true
-
-
-func cel_switched() -> void:
-	if current_frame_data.is_empty():
-		queue_generate = true
-	update_frame_data()
-	if !is_sane(api.project.current_project):  ## Do nothing more if pose layer doesn't exist
-		return
-	manage_layer_visibility()
-
-
-func project_data_changed(project) -> void:
-	if project == api.project.current_project:
-		if (
-			project.frames.size() != prev_frame_count
-			or project.layers.size() != prev_layer_count
-		):
-			update_frame_data()
-			generate_pose()
-
-
-func project_layers_moved() -> void:
-	await get_tree().process_frame  # Wait for the project to adjust
-	if is_sane(api.project.current_project):
-		update_frame_data()
-		if api.project.current_project.current_layer == pose_layer.index:
-			generate_pose()
-		else:
-			queue_generate = true
-
-
+## Checks the group heirarchy and comes up with a valid name
 func get_valid_name(initial_name: String, existing_names: Array) -> String:
 	## Remove any previous suffixes
 	#initial_name = get_name_without_suffix(initial_name)
@@ -398,17 +379,162 @@ func get_valid_name(initial_name: String, existing_names: Array) -> String:
 	return new_name
 
 
-func layer_name_changed(layer, old_name: String) -> void:
-	if layer.get_layer_type() == 0 and not is_sane(api.project.current_project):
+func find_pose_layer(project) -> RefCounted:
+	for layer_idx in range(project.layers.size() - 1, -1, -1):  # The pose layer is likely near top.
+		if is_pose_layer(project.layers[layer_idx]):
+			if project.layers[layer_idx].index != layer_idx:
+				# Index mismatch detected, Fixing...
+				project.layers[layer_idx].index = layer_idx  # update the idx of the layer
+			return project.layers[layer_idx]
+	return
+
+
+func get_best_origin(layer_idx: int) -> Vector2i:
+	var project = api.project.current_project
+	if current_frame >= 0 and current_frame < project.frames.size():
+		if layer_idx >= 0 and layer_idx < project.layers.size():
+			if project.layers[layer_idx].get_layer_type() == global.LayerTypes.GROUP:
+				var used_rect := Rect2i()
+				for child_layer in project.layers[layer_idx].get_children(false):
+					if project.frames[current_frame].cels[child_layer.index].get_class_name() == "PixelCel":
+						var cel_rect = (
+								project.frames[current_frame].cels[child_layer.index].get_image()
+							).get_used_rect()
+						if cel_rect.has_area():
+							used_rect = used_rect.merge(cel_rect) if used_rect.has_area() else cel_rect
+				return used_rect.position + (used_rect.size / 2)
+	return Vector2i.ZERO
+
+
+## Signal managers (Provides easy connecting/disconnecting throughout the script)
+
+
+## Manages connections of UI and API signals that don't depend on project switching. Used to connect
+## signals related to UI elements that are cruitial for updating skeleton data. We also use this to
+## occasionaly disconnect signals as well at places where we don't want any undesired stuff to
+## happen (e.g see manage_project_signals() and generate_pose())
+func manage_ui_signals(is_disconnecting := false) -> void:
+	api.signals.signal_cel_switched(_on_cel_switched, is_disconnecting)
+	api.signals.signal_project_data_changed(_on_project_data_changed, is_disconnecting)
+	api.signals.signal_current_cel_texture_changed(
+		_on_pixel_layers_texture_changed, is_disconnecting
+	)
+	if is_disconnecting:
+		global.layer_vbox.child_order_changed.disconnect(_on_project_layers_moved)
+	else:
+		if not global.layer_vbox.is_connected("child_order_changed", _on_project_layers_moved):
+			global.layer_vbox.child_order_changed.connect(_on_project_layers_moved)
+
+
+## Manages connections of signals that have to be re-determined everytime project switches.
+## Used to connect to incoming Project signals cruitial for updating skeleton data.
+## Automatically called when project switches
+func manage_project_signals(should_connect := false) -> void:
+	var project = api.project.current_project
+	if should_connect:
+		## Add stuff which connects on project changed
+		reset_everything()
+		for layer in api.project.current_project.layers:
+			if layer != pose_layer:
+				# Treatment for simple layers (all BaseLayers except Group Layers)
+				if layer.get_layer_type() != global.LayerTypes.GROUP:
+					if !layer.visibility_changed.is_connected(generate_pose):
+						layer.visibility_changed.connect(generate_pose)
+				# Treatment for group layers
+				if !layer.name_changed.is_connected(_on_layer_name_changed):
+					layer.name_changed.connect(_on_layer_name_changed.bind(layer, layer.name))
+					layer.effects_added_removed.connect(generate_pose)
+		# Wait two frames for the project to adjust
+		await get_tree().process_frame
+		await get_tree().process_frame
+		manage_ui_signals()
+		# NOTE: we need to call _on_cel_switched() here manually becaues the signal we used to
+		# trigger it was disconnected by us during project switching and was reconnected just
+		# recently through manage_ui_signals().
+		_on_cel_switched()
+		global.canvas.update_all_layers = true
+		global.canvas.queue_redraw()
+	else:
+		### Add stuff which disconnects on project changed
+		# NOTE: we disconnect manage_ui_signals here because while project is switching, the
+		# _on_project_layers_moved signal, (which is managed by manage_ui_signals) is spammed multiple
+		# times as layers are being updated, which results in spamming generate_pose,
+		# causing useless delays.
+		manage_ui_signals(true)
+		for layer in api.project.current_project.layers:
+			if layer != pose_layer:
+				# Treatment for simple layers (all BaseLayers except Group Layers)
+				if layer.get_layer_type() != global.LayerTypes.GROUP:
+					if layer.visibility_changed.is_connected(generate_pose):
+						layer.visibility_changed.disconnect(generate_pose)
+				 # Treatment for group layers
+				if layer.name_changed.is_connected(_on_layer_name_changed):
+					layer.name_changed.disconnect(_on_layer_name_changed)
+					layer.effects_added_removed.disconnect(generate_pose)
+
+
+## Signal recievers
+
+
+## Signal to the "Assign Pose Layer" menu button
+func menu_item_clicked():
+	var project = api.project.current_project
+	var current_layer = project.layers[project.current_layer]
+	if !pose_layer and current_layer.get_layer_type() == global.LayerTypes.PIXEL:
+		pose_layer = current_layer
+		update_frame_data()
+
+
+func _on_pixel_layers_texture_changed() -> void:
+	if not is_pose_layer(
+		api.project.current_project.layers[api.project.current_project.current_layer]
+	):
+		queue_generate = true
+
+
+func _on_cel_switched() -> void:
+	if current_frame_data.is_empty():
+		queue_generate = true
+	update_frame_data()
+	if !is_sane(api.project.current_project):  ## Do nothing more if pose layer doesn't exist
+		return
+	manage_layer_visibility()
+
+
+func _on_project_data_changed(project) -> void:
+	if project == api.project.current_project:
+		if (
+			project.frames.size() != prev_frame_count
+			or project.layers.size() != prev_layer_count
+		):
+			update_frame_data()
+			generate_pose()
+
+
+func _on_project_layers_moved() -> void:
+	await get_tree().process_frame  # Wait for the project to adjust
+	if is_sane(api.project.current_project):
+		update_frame_data()
+		if api.project.current_project.current_layer == pose_layer.index:
+			generate_pose()
+		else:
+			queue_generate = true
+
+
+func _on_layer_name_changed(layer, old_name: String) -> void:
+	if (
+		layer.get_layer_type() == global.LayerTypes.PIXEL
+		and not is_sane(api.project.current_project)
+	):
 		if "Pose Layer" in layer.name.capitalize():
 			pose_layer = layer
 			update_frame_data()
 			return
-	elif layer.get_layer_type() == 1:
+	elif layer.get_layer_type() == global.LayerTypes.GROUP:
 		if is_sane(api.project.current_project):
 			if old_name in current_frame_data.keys():
 				# Disconnect and later re-connect with new "old_name"
-				layer.name_changed.disconnect(layer_name_changed)
+				layer.name_changed.disconnect(_on_layer_name_changed)
 				if layer.name in current_frame_data.keys():  # Conflict Detected
 					layer.name = get_valid_name(layer.name, current_frame_data.keys())
 				if old_name in current_frame_bones.keys():
@@ -421,7 +547,7 @@ func layer_name_changed(layer, old_name: String) -> void:
 				if layer.parent:
 					rename_data["parent_bone_name"] = layer.parent.name
 				current_frame_data[layer.name] = rename_data
-				layer.name_changed.connect(layer_name_changed.bind(layer, layer.name))
+				layer.name_changed.connect(_on_layer_name_changed.bind(layer, layer.name))
 			else: ## It's a new bone
 				var layer_parent_name = ""
 				if layer.parent:
@@ -432,30 +558,69 @@ func layer_name_changed(layer, old_name: String) -> void:
 		save_frame_info(api.project.current_project)
 
 
-func _draw() -> void:
-	if current_frame_data.is_empty():
-		return
-	if active_skeleton_tools.is_empty():
-		return
-	var project = api.project.current_project
-	var group_names: Array = current_frame_data.keys()
-	for bone_name: String in group_names:
-		# before drawing the gizmo, we check if it needs update, or creation first
-		if bone_name in current_frame_bones.keys():
-			var bone = current_frame_bones[bone_name]
-			bone.serialize(current_frame_data[bone_name])
-			if not bone.update_property.is_connected(update_bone_property):
-				bone.update_property.connect(update_bone_property.bind(project))
-		else:
-			var bone = SkeletonGizmo.new()
-			bone.serialize(current_frame_data[bone_name])
-			bone.update_property.connect(update_bone_property.bind(project))
-			current_frame_bones[bone_name] = bone
-	for bone_name: String in group_names:
-		_draw_gizmo(current_frame_bones[bone_name], global.camera.zoom)
+## Misclenious helper methods (methods that are part of other methods but don't have a category)
 
 
-## Helper methods (methods that are part of other methods)
+func manage_layer_visibility() -> void:
+	var pose_layer_visible = (api.project.current_project.current_layer == pose_layer.index)
+	if pose_layer_visible != pose_layer.visible:
+		pose_layer.visible = pose_layer_visible
+		if not pose_layer.visible:  # Clear gizmos when we leave PoseLayer
+			selected_gizmo = null
+		if api.project.current_project.current_layer == pose_layer.index:
+			# generate_pose if we qued it and are now back on PoseLayer
+			if queue_generate and pose_layer.visible:
+				queue_generate = false
+				generate_pose()
+		# Also change visibility of all the root folders
+		for layer_idx in api.project.current_project.layers.size():
+			var layer = api.project.current_project.layers[layer_idx]
+			if layer.get_layer_type() == global.LayerTypes.GROUP and not layer.parent:
+				api.project.current_project.layers[layer_idx].visible = !pose_layer_visible
+
+
+func assign_pose_layer(layer) -> void:
+	if layer:
+		layer.set_meta("SkeletorPoseLayer", true)
+		layer.set("ui_color", Color(0, 1, 0, 0.5))
+		if pose_layer.visibility_changed.is_connected(generate_pose):
+			pose_layer.visibility_changed.disconnect(generate_pose)
+
+
+## Saves the current_frame_data to the given frame of project
+func save_frame_info(project, frame_data := current_frame_data, at_frame := current_frame) -> void:
+	if project and is_sane(project):
+		if at_frame >= 0 and at_frame < project.frames.size():
+			project.frames[at_frame].cels[pose_layer.index].set_meta(
+				"SkeletorSkeleton", var_to_str(frame_data)
+			)
+			queue_redraw()
+
+
+## loads frame data from the given frame of project
+func load_frame_info(project, frame_number:= current_frame) -> Dictionary:
+	if !pose_layer:
+		pose_layer = find_pose_layer(project)
+	if project and pose_layer:
+		if frame_number >= 0 and frame_number < project.frames.size():
+			var data = project.frames[frame_number].cels[pose_layer.index].get_meta(
+				"SkeletorSkeleton", {}
+			)
+			if typeof(data) == TYPE_STRING:
+				data = str_to_var(data)
+			if typeof(data) == TYPE_DICTIONARY:  # Successful conversion
+				# At the cost of some performance, go through a failsafe first
+				for bone in data.keys():
+					if data.get(bone, null) == null:
+						data.erase(bone)
+						continue
+					for bone_data in data.get(bone, {}).keys():
+						if typeof(data[bone][bone_data]) == TYPE_STRING:
+							if str_to_var(data[bone][bone_data]):  # Succesful sub-data conversion
+								data[bone][bone_data] = str_to_var(data[bone][bone_data])
+				return data
+	return {}
+
 
 ## Generates a gizmo (for preview) based on the given data
 func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
@@ -560,6 +725,7 @@ func _draw_gizmo(gizmo: SkeletonGizmo, camera_zoom: Vector2) -> void:
 		draw_string(font, Vector2(3, -3), gizmo.bone_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, bone_color)
 
 
+## Applies the transformations done by bone_name to the given cel_image
 func _apply_bone(bone_name: String, cel_image: Image, at_frame := current_frame) -> void:
 	var frame_data = current_frame_data
 	if at_frame != current_frame:
@@ -645,7 +811,7 @@ func _set_layer_metadata_image(
 	# Store the blend mode
 	image.set_pixel(index, 0, Color(layer.blend_mode / 255.0, 0.0, 0.0, 0.0))
 	# Store the opacity
-	if layer.visible or layer.get_layer_type() == 1:
+	if layer.visible or layer.get_layer_type() == global.LayerTypes.GROUP:
 		var opacity = cel.get_final_opacity(layer)
 		image.set_pixel(index, 1, Color(opacity, 0.0, 0.0, 0.0))
 	else:
@@ -673,119 +839,3 @@ func _render_image(image: Image, at_frame := current_frame) -> void:
 	if at_frame == current_frame and pose_layer.index == project.current_layer:
 		project.selected_cels = []
 		project.change_cel(at_frame, pose_layer.index)
-
-
-func is_pose_layer(layer) -> bool:
-	return layer.get_meta("SkeletorPoseLayer", false)
-
-
-func manage_layer_visibility() -> void:
-	var pose_layer_visible = (api.project.current_project.current_layer == pose_layer.index)
-	if pose_layer_visible != pose_layer.visible:
-		pose_layer.visible = pose_layer_visible
-		if not pose_layer.visible:
-			selected_gizmo = null
-		if api.project.current_project.current_layer == pose_layer.index:
-			if queue_generate:
-				queue_generate = false
-				generate_pose()
-		# Also disable the root folders
-		for layer_idx in api.project.current_project.layers.size():
-			var layer = api.project.current_project.layers[layer_idx]
-			if layer.get_layer_type() == 1 and not layer.parent:
-				api.project.current_project.layers[layer_idx].visible = !pose_layer_visible
-
-
-func menu_item_clicked():
-	var project = api.project.current_project
-	var current_layer = project.layers[project.current_layer]
-	if !pose_layer and current_layer.get_layer_type() == 0:
-		pose_layer = current_layer
-		update_frame_data()
-
-
-func assign_pose_layer(layer) -> void:
-	if layer:
-		layer.set_meta("SkeletorPoseLayer", true)
-		layer.set("ui_color", Color(0, 1, 0, 0.5))
-		if pose_layer.visibility_changed.is_connected(generate_pose):
-			pose_layer.visibility_changed.disconnect(generate_pose)
-
-
-func find_pose_layer(project) -> RefCounted:
-	for layer_idx in range(project.layers.size() - 1, -1, -1):  # The pose layer is likely near top.
-		if is_pose_layer(project.layers[layer_idx]):
-			if project.layers[layer_idx].index != layer_idx:
-				# Index mismatch detected, Fixing...
-				project.layers[layer_idx].index = layer_idx  # update the idx of the layer
-			return project.layers[layer_idx]
-	return
-
-
-## This only searchec for an "Existing" pose layer.
-## The assignment of pose layers are done in update_frame_data()
-func is_sane(project) -> bool:
-	if pose_layer:
-		if pose_layer.index != project.layers.find(pose_layer):
-			pose_layer = null
-	if not pose_layer in project.layers:
-		pose_layer = find_pose_layer(project)
-		if pose_layer:
-			return true
-		clean_data()
-		return false
-	return true
-
-
-func get_best_origin(layer_idx: int) -> Vector2i:
-	var project = api.project.current_project
-	if current_frame >= 0 and current_frame < project.frames.size():
-		if layer_idx >= 0 and layer_idx < project.layers.size():
-			if project.layers[layer_idx].get_layer_type() == 1:
-				var used_rect := Rect2i()
-				for child_layer in project.layers[layer_idx].get_children(false):
-					if project.frames[current_frame].cels[child_layer.index].get_class_name() == "PixelCel":
-						var cel_rect = (
-								project.frames[current_frame].cels[child_layer.index].get_image()
-							).get_used_rect()
-						if cel_rect.has_area():
-							used_rect = used_rect.merge(cel_rect) if used_rect.has_area() else cel_rect
-				return used_rect.position + (used_rect.size / 2)
-	return Vector2i.ZERO
-
-
-func save_frame_info(project, frame_data := current_frame_data, at_frame := current_frame) -> void:
-	if project and is_sane(project):
-		if at_frame >= 0 and at_frame < project.frames.size():
-			project.frames[at_frame].cels[pose_layer.index].set_meta(
-				"SkeletorSkeleton", var_to_str(frame_data)
-			)
-			queue_redraw()
-
-
-func load_frame_info(project, frame_number:= current_frame) -> Dictionary:
-	if !pose_layer:
-		pose_layer = find_pose_layer(project)
-	if project and pose_layer:
-		if frame_number >= 0 and frame_number < project.frames.size():
-			var data = project.frames[frame_number].cels[pose_layer.index].get_meta(
-				"SkeletorSkeleton", {}
-			)
-			if typeof(data) == TYPE_STRING:
-				data = str_to_var(data)
-			if typeof(data) == TYPE_DICTIONARY:  # Successful conversion
-				# At the cost of some performance, go through a failsafe first
-				for bone in data.keys():
-					if data.get(bone, null) == null:
-						data.erase(bone)
-						continue
-					for bone_data in data.get(bone, {}).keys():
-						if typeof(data[bone][bone_data]) == TYPE_STRING:
-							if str_to_var(data[bone][bone_data]):  # Succesful sub-data conversion
-								data[bone][bone_data] = str_to_var(data[bone][bone_data])
-				return data
-	return {}
-
-
-func announce_tool_removal(tool_node):
-	active_skeleton_tools.erase(tool_node)
