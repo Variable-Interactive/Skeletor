@@ -12,10 +12,10 @@ This is a pixelorama extension that add basic Skeletal animation capabilities to
 <table>
   <tr>
     <td>
-      <a href="https://github.com/user-attachments/files/23674501/Turret.Demo.Extract.Me.zip"><img src="https://github.com/user-attachments/assets/ae5837e2-e363-4312-85fe-882eb3250bc5"  alt="Turret Demo" width = 360px height = 640px >
+      <a href="https://github.com/user-attachments/files/23674501/Turret.Demo.Extract.Me.zip"><img src="https://github.com/user-attachments/assets/ae5837e2-e363-4312-85fe-882eb3250bc5"  alt="Turret Demo" width = 256px height = 256px >
     </td>
     <td>
-      <a href="https://github.com/user-attachments/files/23674862/Character.Demo.Extract.Me.zip"><img src="https://github.com/user-attachments/assets/d692e6c0-3e25-468d-99b3-01df46a77438" alt="Character Demo" width = 360px height = 640px>
+      <a href="https://github.com/user-attachments/files/23674862/Character.Demo.Extract.Me.zip"><img src="https://github.com/user-attachments/assets/d692e6c0-3e25-468d-99b3-01df46a77438" alt="Character Demo" width = 418px height = 602px>
     </td>
   </tr>
 </table>
