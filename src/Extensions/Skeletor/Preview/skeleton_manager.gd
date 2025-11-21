@@ -43,7 +43,9 @@ func is_bone_parent_valid(bone: SkeletonGizmo) -> bool:
 
 ## If a propagatable property (movement, rotation) is done on a SkeletonGizmo object, this method
 ## Gets called automatically to update/transform all it's children automatically as well
-func update_bone_property(parent_name: String, property: String, should_propagate: bool, diff, project):
+func update_bone_property(
+	parent_name: String, property: String, should_propagate: bool, diff, project
+) -> void:
 	if not is_instance_valid(project):
 		return
 	# First we update data of parent bone
@@ -231,28 +233,37 @@ func update_frame_data() -> void:
 	# If the layer is newly added then we need to refresh the bone tree.
 	if project.layers.size() != prev_layer_count:
 		prev_layer_count = project.layers.size()
-		generate_heirarchy(current_frame_data)
+		for frame in project.frames.size():
+			if frame == current_frame:
+				fix_skeleton_heirarchy(current_frame_data)
+			else:  # Fix other frames for this missing data as well
+				var frame_data := load_frame_info(project, frame)
+				fix_skeleton_heirarchy(frame_data)
+				save_frame_info(project, frame_data, frame)
 	save_frame_info(project)
 
 
-func generate_heirarchy(old_data: Dictionary) -> void:
-	var invalid_layer_names := old_data.keys()
+func fix_skeleton_heirarchy(data: Dictionary) -> void:
+	var invalid_layer_names := data.keys()  # Initially treat all old names as invalid
 	group_names_ordered.clear()
 	for layer in api.project.current_project.layers:
+		# Attempt to fix Pose Layer if it isn't present
 		if !pose_layer and layer.get_layer_type() == global.LayerTypes.PIXEL:
-			# If user deleted a pose layer then try to find a new one
 			if "Pose Layer" in layer.name.capitalize():
 				pose_layer = layer
+		# Find names of all Group layers in order
 		elif layer.get_layer_type() == global.LayerTypes.GROUP:
 			group_names_ordered.insert(0, layer.name)
+			invalid_layer_names.erase(layer.name)  # Layer is a valid Group Layer
 			var parent_name = ""
 			if layer.parent:
 				parent_name = layer.parent.name
-			invalid_layer_names.erase(layer.name)
-			if not layer.name in old_data.keys():
-				old_data[layer.name] = SkeletonGizmo.generate_empty_data(layer.name, parent_name)
+			# A new Group layer is discovered. Catalogue it!
+			if not layer.name in data.keys():
+				data[layer.name] = SkeletonGizmo.generate_empty_data(layer.name, parent_name)
 
-		## check connectivity of one of these signals and assume the result for others
+		# check connectivity of one of these signals and assume the result for others
+		# (if one signal isn't connected, it's likely other signals aren't as well)
 		if not layer.name_changed.is_connected(_on_layer_name_changed):
 			if layer != pose_layer:
 				if layer.get_layer_type() != global.LayerTypes.GROUP:
@@ -260,12 +271,10 @@ func generate_heirarchy(old_data: Dictionary) -> void:
 				layer.effects_added_removed.connect(generate_pose)
 				layer.name_changed.connect(_on_layer_name_changed.bind(layer, layer.name))
 	for layer_name in invalid_layer_names:
-		old_data.erase(layer_name)
+		data.erase(layer_name)
 
 
-func generate_pose(for_frame := current_frame) -> void:
-	print("pose=========================")
-	print_stack()
+func generate_pose(for_frame: int = current_frame) -> void:
 	var project = api.project.current_project
 	if not is_sane(project):  # There is no Pose Layer to render to!!!
 		return
@@ -345,13 +354,13 @@ func generate_pose(for_frame := current_frame) -> void:
 
 
 ## Checks if the provided layer is a PoseLayer
-func is_pose_layer(layer) -> bool:
+func is_pose_layer(layer: RefCounted) -> bool:
 	return layer.get_meta("SkeletorPoseLayer", false)
 
 
 ## This only searches for an "Existing" pose layer.
 ## The assignment of pose layers are done in update_frame_data()
-func is_sane(project) -> bool:
+func is_sane(project: RefCounted) -> bool:
 	if pose_layer:
 		if pose_layer.index != project.layers.find(pose_layer):
 			pose_layer = null
@@ -379,7 +388,7 @@ func get_valid_name(initial_name: String, existing_names: Array) -> String:
 	return new_name
 
 
-func find_pose_layer(project) -> RefCounted:
+func find_pose_layer(project: RefCounted) -> RefCounted:
 	for layer_idx in range(project.layers.size() - 1, -1, -1):  # The pose layer is likely near top.
 		if is_pose_layer(project.layers[layer_idx]):
 			if project.layers[layer_idx].index != layer_idx:
@@ -420,9 +429,10 @@ func manage_ui_signals(is_disconnecting := false) -> void:
 		_on_pixel_layers_texture_changed, is_disconnecting
 	)
 	if is_disconnecting:
-		global.layer_vbox.child_order_changed.disconnect(_on_project_layers_moved)
+		if global.layer_vbox.child_order_changed.is_connected(_on_project_layers_moved):
+			global.layer_vbox.child_order_changed.disconnect(_on_project_layers_moved)
 	else:
-		if not global.layer_vbox.is_connected("child_order_changed", _on_project_layers_moved):
+		if not global.layer_vbox.child_order_changed.is_connected(_on_project_layers_moved):
 			global.layer_vbox.child_order_changed.connect(_on_project_layers_moved)
 
 
@@ -477,7 +487,7 @@ func manage_project_signals(should_connect := false) -> void:
 
 
 ## Signal to the "Assign Pose Layer" menu button
-func menu_item_clicked():
+func menu_item_clicked() -> void:
 	var project = api.project.current_project
 	var current_layer = project.layers[project.current_layer]
 	if !pose_layer and current_layer.get_layer_type() == global.LayerTypes.PIXEL:
@@ -501,7 +511,7 @@ func _on_cel_switched() -> void:
 	manage_layer_visibility()
 
 
-func _on_project_data_changed(project) -> void:
+func _on_project_data_changed(project: RefCounted) -> void:
 	if project == api.project.current_project:
 		if (
 			project.frames.size() != prev_frame_count
@@ -521,7 +531,7 @@ func _on_project_layers_moved() -> void:
 			queue_generate = true
 
 
-func _on_layer_name_changed(layer, old_name: String) -> void:
+func _on_layer_name_changed(layer: RefCounted, old_name: String) -> void:
 	if (
 		layer.get_layer_type() == global.LayerTypes.PIXEL
 		and not is_sane(api.project.current_project)
@@ -579,7 +589,7 @@ func manage_layer_visibility() -> void:
 				api.project.current_project.layers[layer_idx].visible = !pose_layer_visible
 
 
-func assign_pose_layer(layer) -> void:
+func assign_pose_layer(layer: RefCounted) -> void:
 	if layer:
 		layer.set_meta("SkeletorPoseLayer", true)
 		layer.set("ui_color", Color(0, 1, 0, 0.5))
@@ -588,7 +598,11 @@ func assign_pose_layer(layer) -> void:
 
 
 ## Saves the current_frame_data to the given frame of project
-func save_frame_info(project, frame_data := current_frame_data, at_frame := current_frame) -> void:
+func save_frame_info(
+	project: RefCounted,
+	frame_data: Dictionary = current_frame_data,
+	at_frame: int = current_frame
+) -> void:
 	if project and is_sane(project):
 		if at_frame >= 0 and at_frame < project.frames.size():
 			project.frames[at_frame].cels[pose_layer.index].set_meta(
@@ -598,7 +612,7 @@ func save_frame_info(project, frame_data := current_frame_data, at_frame := curr
 
 
 ## loads frame data from the given frame of project
-func load_frame_info(project, frame_number:= current_frame) -> Dictionary:
+func load_frame_info(project: RefCounted, frame_number: int = current_frame) -> Dictionary:
 	if !pose_layer:
 		pose_layer = find_pose_layer(project)
 	if project and pose_layer:
@@ -806,7 +820,7 @@ func _apply_bone(bone_name: String, cel_image: Image, at_frame := current_frame)
 
 
 func _set_layer_metadata_image(
-	layer, cel, image, index, include := true
+	layer: RefCounted, cel: RefCounted, image: Image, index: int, include := true
 ) -> void:
 	# Store the blend mode
 	image.set_pixel(index, 0, Color(layer.blend_mode / 255.0, 0.0, 0.0, 0.0))
@@ -828,7 +842,7 @@ func _set_layer_metadata_image(
 		image.set_pixel(index, 3, Color(0.2, 0.0, 0.0, 0.0))
 
 
-func _render_image(image: Image, at_frame := current_frame) -> void:
+func _render_image(image: Image, at_frame: int = current_frame) -> void:
 	var project = api.project.current_project
 	var pixel_cel = project.frames[at_frame].cels[pose_layer.index]
 	var cel_image: Image = pixel_cel.get_image()
