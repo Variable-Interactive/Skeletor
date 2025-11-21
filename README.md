@@ -3,12 +3,22 @@
   
 [![Thumbnail](https://github.com/user-attachments/assets/3f5ec294-600e-4cd4-9049-7c0124801662)](https://youtu.be/RqCqg34G6Zg)
 
-</div>
+</div>[Character Demo (Extract Me).zip]()
+
 
 ## Demo Projects
-This is a pixelorama extension that add basic Skeletal animation capabilities to the software. You may play with this extension on [a Demo Project](https://github.com/user-attachments/files/18762945/Demo.Project.Extract.me.zip).
+This is a pixelorama extension that add basic Skeletal animation capabilities to the software. You may play with this extension on one of the Demo Projects below.
 
-[![Turret](https://github.com/user-attachments/assets/ae5837e2-e363-4312-85fe-882eb3250bc5)](https://github.com/user-attachments/files/23674501/Turret.Demo.Extract.Me.zip)
+<table>
+  <tr>
+    <td>
+      <a href="https://github.com/user-attachments/files/23674501/Turret.Demo.Extract.Me.zip"><img src="https://github.com/user-attachments/assets/ae5837e2-e363-4312-85fe-882eb3250bc5"  alt="Turret Demo" width = 360px height = 640px >
+    </td>
+    <td>
+      <a href="https://github.com/user-attachments/files/23674862/Character.Demo.Extract.Me.zip"><img src="https://github.com/user-attachments/assets/d692e6c0-3e25-468d-99b3-01df46a77438" alt="Character Demo" width = 360px height = 640px>
+    </td>
+  </tr>
+</table>
 
 ## Highlight Features:
 <div align=center>
