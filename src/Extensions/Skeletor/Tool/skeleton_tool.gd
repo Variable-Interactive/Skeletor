@@ -380,7 +380,7 @@ func update_config() -> void:
 	_error_margin_slider.set_value_no_signal_update_display(_ik_error_margin)
 	# Update Visibility of some UI options
 	%InverseKinematics.visible = _allow_chaining
-	ik_options.visible = _use_ik
+	ik_section.visible = _use_ik
 	%IncludeChildrenCheckbox.button_pressed = _include_children
 	if bone_manager:
 		# Update properties ofthe manager
@@ -662,6 +662,20 @@ func draw_end(_pos: Vector2i) -> void:
 
 	# Set project as changed and display bone properties. This auto triggers display_props()
 	api.project.current_project.has_changed = true
+
+
+func _on_add_texture_pressed():
+	if bone_manager.selected_gizmo:
+		for layer_idx: int in api.project.current_project.layers.size():
+			if (
+				api.project.current_project.layers[layer_idx].get_layer_type()
+				== api.general.get_global().LayerTypes.GROUP
+			):
+				var bone_name: StringName = api.project.current_project.layers[layer_idx].name
+				if bone_name == bone_manager.selected_gizmo.bone_name:
+					api.project.add_new_layer(layer_idx)
+					bone_manager.call("_on_cel_switched")
+					break
 
 
 ## Feature to quickly set bones to the center of their assigned textures
