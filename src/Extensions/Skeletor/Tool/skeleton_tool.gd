@@ -9,23 +9,28 @@ var tool_slot
 var kname: String
 var cursor_text := ""
 var bone_manager: BoneManager
-var generation_threshold: float = 20
 var live_thread := Thread.new()
 
+# General properties
 var _live_update := false
 var _allow_chaining := false
 var _lock_pose := false
+var _include_children := true
 
+# Inverse kinematic variables
 var _use_ik := false
+var _lock_root_bone := true
 var _ik_protocol: int = IKAlgorithms.FABRIK
 var _chain_length: int = 2
 var _max_ik_itterations: int = 20
 var _ik_error_margin: float = 0.1
-var _include_children := true
 
+# Do not touch (used internally by script)
 var _displace_offset := Vector2.ZERO
 var _prev_mouse_position := Vector2.INF
-var _chained_gizmo = null
+var _chained_gizmo = null  # Used during chain mode to keep track of original selected gizmo
+
+# Sliders that are created procedurally later
 var _rot_slider: TextureProgressBar
 var _pos_slider: HBoxContainer
 var _chain_size_slider: TextureProgressBar
@@ -648,6 +653,11 @@ func draw_move(_pos: Vector2i) -> void:
 								_max_ik_itterations,
 								_ik_error_margin
 							)
+					if not _lock_root_bone:
+						var last_gizmo := bone_manager.selected_gizmo
+						var end_point := last_gizmo.rel_to_canvas(last_gizmo.start_point)
+						if end_point.distance_to(mouse_point) > _ik_error_margin:
+							print(Time.get_ticks_msec())
 					if _live_update and update_canvas:
 						manage_threading_generate_pose()
 					_prev_mouse_position = mouse_point
@@ -1013,6 +1023,8 @@ func get_selected_bone_names(popup: PopupMenu, bone_index: int) -> PackedStringA
 
 
 func display_props():
+	skeleton_creator.visible = bone_manager.current_frame_data.is_empty()
+	tool_options.visible = !skeleton_creator.visible
 	if _rot_slider.value_changed.is_connected(_on_rotation_changed):  # works for both signals
 		_rot_slider.value_changed.disconnect(_on_rotation_changed)
 		_pos_slider.value_changed.disconnect(_on_position_changed)
