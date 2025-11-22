@@ -20,6 +20,7 @@ var _chain_length: int = 2
 var _max_ik_itterations: int = 20
 var _ik_error_margin: float = 0.1
 var _include_children := true
+var _lock_pose := false
 var _displace_offset := Vector2.ZERO
 var _prev_mouse_position := Vector2.INF
 var _distance_to_parent: float = 0
@@ -38,7 +39,12 @@ var _error_margin_slider: TextureProgressBar
 @onready var tween_skeleton_menu: MenuButton = %TweenSkeleton
 @onready var ik_options: VBoxContainer = %IKOptions
 @onready var bone_props: VBoxContainer = %BoneProps
+@onready var sliders_container: VBoxContainer = %SlidersContainer
 
+@onready var pose_layer_creator: VBoxContainer = %PoseLayerCreator
+@onready var options_container: VBoxContainer = %OptionsContainer
+@onready var skeleton_creator: VBoxContainer = %SkeletonCreator
+@onready var tool_options: VBoxContainer = %ToolOptions
 @onready var ik_section: VBoxContainer = %IKSection
 @onready var skeleton_section: VBoxContainer = %SkeletonSection
 @onready var utilities_section: VBoxContainer = %UtilitiesSection
@@ -246,7 +252,7 @@ func _ready() -> void:
 		_pos_slider.min_value = Vector2.ZERO
 		_pos_slider.max_value = Vector2(100, 100)
 		_pos_slider.name = "BonePositionSlider"
-		bone_props.add_child(_pos_slider)
+		sliders_container.add_child(_pos_slider)
 
 		_rot_slider = api.general.create_value_slider()
 		_rot_slider.allow_greater = true
@@ -259,7 +265,7 @@ func _ready() -> void:
 		_rot_slider.step = 0.01
 		_rot_slider.name = "BoneRotationSlider"
 		_rot_slider.custom_minimum_size.y = 24.0
-		bone_props.add_child(_rot_slider)
+		sliders_container.add_child(_rot_slider)
 
 		_chain_size_slider = api.general.create_value_slider()
 		_chain_size_slider.allow_greater = true
@@ -326,6 +332,7 @@ func _ready() -> void:
 		api.signals.signal_cel_switched(display_props)
 		api.signals.signal_project_switched(display_props)
 		api.signals.signal_project_data_changed(_on_project_data_changed)
+		bone_manager.pose_layer_changed.connect(_on_pose_layer_changed)
 		# Connect signals for MenuButtons
 		quick_set_bones_menu.get_popup().index_pressed.connect(quick_set_bones)
 		rotation_reset_menu.get_popup().index_pressed.connect(reset_bone_angle)
@@ -334,6 +341,11 @@ func _ready() -> void:
 
 	# Loading finished, Assign name to Node and load configuration
 	kname = name.replace(" ", "_").to_lower()
+	pose_layer_creator.visible = (bone_manager.pose_layer == null)
+	options_container.visible = !pose_layer_creator.visible
+	skeleton_creator.visible = bone_manager.current_frame_data.is_empty()
+	tool_options.visible = !skeleton_creator.visible
+
 	load_config()
 
 
@@ -355,6 +367,7 @@ func get_config() -> Dictionary:
 	config["max_ik_itterations"] = _max_ik_itterations
 	config["ik_error_margin"] = _ik_error_margin
 	config["include_children"] = _include_children
+	config["lock_pose"] = _lock_pose
 	return config
 
 ## Deserializes the current script variables. Used by load_config method
@@ -367,6 +380,7 @@ func set_config(config: Dictionary) -> void:
 	_max_ik_itterations = config.get("max_ik_itterations", _max_ik_itterations)
 	_ik_error_margin = config.get("ik_error_margin", _ik_error_margin)
 	_include_children = config.get("include_children", _include_children)
+	_lock_pose = config.get("lock_pose", _lock_pose)
 
 
 ## Updates th UI based on the current values of Script variables
@@ -380,8 +394,12 @@ func update_config() -> void:
 	_error_margin_slider.set_value_no_signal_update_display(_ik_error_margin)
 	# Update Visibility of some UI options
 	%InverseKinematics.visible = _allow_chaining
-	ik_section.visible = _use_ik
+	ik_section.visible = _use_ik and _allow_chaining
 	%IncludeChildrenCheckbox.button_pressed = _include_children
+	%LockPoseCheckbox.button_pressed = _lock_pose
+	%LockPoseInfo.visible = _lock_pose
+	_rot_slider.visible = !_lock_pose
+	_pos_slider.visible = !_lock_pose
 	if bone_manager:
 		# Update properties ofthe manager
 		bone_manager.bones_chained = _allow_chaining
@@ -394,7 +412,52 @@ func save_config() -> void:
 	api.general.get_global().config_cache.set_value(tool_slot.kname, kname, config)
 
 
+func _on_create_pose_layer_pressed() -> void:
+	var project = api.project.current_project
+	project.current_layer = 0  # Layer above which the PoseLayer should be added
+	api.general.get_global().animation_timeline.on_add_layer_list_id_pressed(
+		api.general.get_global().LayerTypes.PIXEL
+	)
+	# Move down twice to avoid being part of any Groups
+	api.general.get_global().animation_timeline.change_layer_order(false)
+	api.general.get_global().animation_timeline.change_layer_order(false)
+	if project.layers.size() > 0:  # Failsafe
+		# Check if addition was successful project.current_layer is auto changed
+		# to point to pose layer
+		if (
+			project.layers[project.current_layer].get_layer_type()
+			== api.general.get_global().LayerTypes.PIXEL
+		):
+			project.layers[project.current_layer].name = "Pose Layer"
+			bone_manager.pose_layer = project.layers[project.current_layer]
+			bone_manager.call("_on_cel_switched")
+
+
+func _on_create_first_bone_pressed() -> void:
+	var project = api.project.current_project
+	if not bone_manager.pose_layer:
+		return
+	api.project.add_new_layer(
+		project.layers.size() - 1, "", api.general.get_global().LayerTypes.GROUP
+	)
+	# User likely wants it disabled here
+	_lock_pose = true
+	update_config()
+	save_config()
+	api.project.select_cels([[project.current_frame, bone_manager.pose_layer.index]])
+	bone_manager.call("_on_cel_switched")
+
+
+func _on_pose_layer_changed():
+	pose_layer_creator.visible = (bone_manager.pose_layer == null)
+	options_container.visible = !pose_layer_creator.visible
+
+
 func _on_project_data_changed(_project):
+	pose_layer_creator.visible = (bone_manager.pose_layer == null)
+	options_container.visible = !pose_layer_creator.visible
+	skeleton_creator.visible = (bone_manager.current_frame_data.is_empty())
+	tool_options.visible = !skeleton_creator.visible
 	display_props()
 
 
@@ -432,6 +495,12 @@ func _on_position_changed(value: Vector2):
 
 func _on_include_children_checkbox_toggled(toggled_on: bool) -> void:
 	_include_children = toggled_on
+	update_config()
+	save_config()
+
+
+func _on_lock_pose_checkbox_toggled(toggled_on: bool) -> void:
+	_lock_pose = toggled_on
 	update_config()
 	save_config()
 
@@ -544,7 +613,7 @@ func draw_move(_pos: Vector2i) -> void:
 		return
 
 	# Checks if user intends of transform bone or just move the gizmo only
-	var is_transforming = not Input.is_key_pressed(KEY_CTRL)
+	var is_transforming = not (Input.is_key_pressed(KEY_CTRL) or _lock_pose)
 	# We need mouse_point to be a Vector2 in order for rotation to work properly.
 	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
 	# Mouse offset between this frame and previous frame
@@ -664,17 +733,40 @@ func draw_end(_pos: Vector2i) -> void:
 	api.project.current_project.has_changed = true
 
 
-func _on_add_texture_pressed():
+func _on_add_bone_pressed() -> void:
 	if bone_manager.selected_gizmo:
-		for layer_idx: int in api.project.current_project.layers.size():
+		var project = api.project.current_project
+		for layer_idx: int in project.layers.size():
 			if (
-				api.project.current_project.layers[layer_idx].get_layer_type()
+				project.layers[layer_idx].get_layer_type()
 				== api.general.get_global().LayerTypes.GROUP
 			):
-				var bone_name: StringName = api.project.current_project.layers[layer_idx].name
+				var bone_name: StringName = project.layers[layer_idx].name
+				if bone_name == bone_manager.selected_gizmo.bone_name:
+					api.project.add_new_layer(
+						layer_idx, "", api.general.get_global().LayerTypes.GROUP
+					)
+					# User likely wants it disabled here
+					_lock_pose = true
+					update_config()
+					save_config()
+					var l_index = 0 if !bone_manager.pose_layer else bone_manager.pose_layer.index
+					api.project.select_cels([[project.current_frame, l_index]])
+					break
+
+
+func _on_add_texture_pressed():
+	if bone_manager.selected_gizmo:
+		var project = api.project.current_project
+		for layer_idx: int in project.layers.size():
+			if (
+				project.layers[layer_idx].get_layer_type()
+				== api.general.get_global().LayerTypes.GROUP
+			):
+				var bone_name: StringName = project.layers[layer_idx].name
 				if bone_name == bone_manager.selected_gizmo.bone_name:
 					api.project.add_new_layer(layer_idx)
-					bone_manager.call("_on_cel_switched")
+					api.project.select_cels([[project.current_frame, layer_idx]])
 					break
 
 

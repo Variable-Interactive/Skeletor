@@ -1,6 +1,8 @@
 class_name BoneManager
 extends Node2D
 
+signal pose_layer_changed
+
 var api: Node
 var global: Node
 var active_tool: Control
@@ -28,6 +30,7 @@ var pose_layer:  ## The layer in which a pose is rendered
 	set(value):
 		pose_layer = value
 		assign_pose_layer(value)
+		pose_layer_changed.emit()
 var generation_cache: Dictionary
 var active_skeleton_tools := Array()
 var rotation_generator: RefCounted

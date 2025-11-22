@@ -1,7 +1,7 @@
 [gd_scene load_steps=4 format=3 uid="uid://7agw0vk8k8i"]
 
-[ext_resource type="Script" uid="uid://bsups5of67tdx" path="res://src/Extensions/Skeletor/Preview/skeleton_manager.gd" id="1_l7ijm"]
-[ext_resource type="Shader" uid="uid://k7chjau5v26j" path="res://src/Extensions/Skeletor/Preview/invert.gdshader" id="1_vuobc"]
+[ext_resource type="Script" uid="uid://bsups5of67tdx" path="res://src/Extensions/Skeletor/Manager/skeleton_manager.gd" id="1_l7ijm"]
+[ext_resource type="Shader" uid="uid://k7chjau5v26j" path="res://src/Extensions/Skeletor/Manager/invert.gdshader" id="1_vuobc"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_taesd"]
 shader = ExtResource("1_vuobc")

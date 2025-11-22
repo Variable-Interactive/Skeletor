@@ -1,6 +1,8 @@
-[gd_scene load_steps=2 format=3 uid="uid://dmm1oev1lo72t"]
+[gd_scene load_steps=4 format=3 uid="uid://dmm1oev1lo72t"]
 
 [ext_resource type="Script" uid="uid://b3csbf4ntlddk" path="res://src/Extensions/Skeletor/Tool/skeleton_tool.gd" id="1_wwq80"]
+[ext_resource type="Texture2D" uid="uid://crxooqv6qh5md" path="res://src/Extensions/Skeletor/Graphics/add_texture.png" id="2_66q0l"]
+[ext_resource type="Texture2D" uid="uid://cocpa2yrd0nb" path="res://src/Extensions/Skeletor/Graphics/new_bone.png" id="2_kpe34"]
 
 [node name="SkeletonTool" type="VBoxContainer"]
 offset_right = 177.0
@@ -17,21 +19,73 @@ theme_type_variation = &"HeaderSmall"
 text = "Tool Name"
 horizontal_alignment = 1
 
-[node name="Section3" type="HBoxContainer" parent="."]
+[node name="PoseLayerCreator" type="VBoxContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="PanelContainer" type="PanelContainer" parent="PoseLayerCreator"]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="Section3"]
+[node name="RichTextLabel" type="RichTextLabel" parent="PoseLayerCreator/PanelContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+text = "[color=orange]Warning[/color]
+No pose layer currently assigned to this project"
+fit_content = true
+scroll_active = false
+horizontal_alignment = 1
+
+[node name="CreatePoseLayer" type="Button" parent="PoseLayerCreator"]
+layout_mode = 2
+text = "Create one"
+
+[node name="OptionsContainer" type="VBoxContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="SkeletonCreator" type="VBoxContainer" parent="OptionsContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="PanelContainer" type="PanelContainer" parent="OptionsContainer/SkeletonCreator"]
+layout_mode = 2
+
+[node name="RichTextLabel" type="RichTextLabel" parent="OptionsContainer/SkeletonCreator/PanelContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+text = "[color=orange]Warning[/color]
+No groups detected in this project"
+fit_content = true
+scroll_active = false
+horizontal_alignment = 1
+
+[node name="CreateBone" type="Button" parent="OptionsContainer/SkeletonCreator"]
+layout_mode = 2
+text = "Create Group"
+
+[node name="ToolOptions" type="VBoxContainer" parent="OptionsContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="Section3" type="HBoxContainer" parent="OptionsContainer/ToolOptions"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="OptionsContainer/ToolOptions/Section3"]
 layout_mode = 2
 text = "General"
 
-[node name="HSeparator" type="HSeparator" parent="Section3"]
+[node name="HSeparator" type="HSeparator" parent="OptionsContainer/ToolOptions/Section3"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="GeneralProperties" type="VBoxContainer" parent="."]
+[node name="GeneralProperties" type="VBoxContainer" parent="OptionsContainer/ToolOptions"]
 layout_mode = 2
 
-[node name="LiveUpdateCheckbox" type="CheckBox" parent="GeneralProperties"]
+[node name="LiveUpdateCheckbox" type="CheckBox" parent="OptionsContainer/ToolOptions/GeneralProperties"]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "(Enabled) The update happens continuously
@@ -40,70 +94,28 @@ as the bone is modified
 (Disabled) The update only happens at the end of modification."
 text = "Live Update (slower)"
 
-[node name="AllowChaining" type="CheckBox" parent="GeneralProperties"]
-unique_name_in_owner = true
-layout_mode = 2
-tooltip_text = "When enabled, it will be possible to displace bone and
-rotate it's parent at the same time (like a chain)."
-text = "Allow Chaining"
-
-[node name="InverseKinematics" type="CheckBox" parent="GeneralProperties"]
-unique_name_in_owner = true
-visible = false
-layout_mode = 2
-text = "Inverse Kinematics"
-
-[node name="IKSection" type="VBoxContainer" parent="."]
+[node name="SkeletonSection" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties"]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="HBoxContainer" type="HBoxContainer" parent="IKSection"]
+[node name="HBoxContainer" type="HBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection"]
 layout_mode = 2
 
-[node name="Spacer" type="Control" parent="IKSection/HBoxContainer"]
+[node name="Spacer" type="Control" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer"]
 custom_minimum_size = Vector2(10, 0)
 layout_mode = 2
 
-[node name="IKOptions" type="VBoxContainer" parent="IKSection/HBoxContainer"]
-unique_name_in_owner = true
+[node name="VBoxContainer" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="HBoxContainer" type="HBoxContainer" parent="IKSection/HBoxContainer/IKOptions"]
-layout_mode = 2
-
-[node name="Label" type="Label" parent="IKSection/HBoxContainer/IKOptions/HBoxContainer"]
-layout_mode = 2
-text = "Algorithm:"
-
-[node name="AlgorithmOption" type="OptionButton" parent="IKSection/HBoxContainer/IKOptions/HBoxContainer"]
+[node name="LockPoseCheckbox" type="CheckBox" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
-alignment = 1
-selected = 0
-item_count = 2
-popup/item_0/text = "FABRIK"
-popup/item_0/id = 0
-popup/item_1/text = "CCDIK"
-popup/item_1/id = 1
+tooltip_text = "Prevents transformations to the bones when their gui is moved."
+text = "Lock Pose"
 
-[node name="SkeletonSection" type="VBoxContainer" parent="."]
-unique_name_in_owner = true
-layout_mode = 2
-
-[node name="HBoxContainer" type="HBoxContainer" parent="SkeletonSection"]
-layout_mode = 2
-
-[node name="Spacer" type="Control" parent="SkeletonSection/HBoxContainer"]
-custom_minimum_size = Vector2(10, 0)
-layout_mode = 2
-
-[node name="VBoxContainer" type="VBoxContainer" parent="SkeletonSection/HBoxContainer"]
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="IncludeChildrenCheckbox" type="CheckBox" parent="SkeletonSection/HBoxContainer/VBoxContainer"]
+[node name="IncludeChildrenCheckbox" type="CheckBox" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Manipulations done through the buttons below
@@ -115,65 +127,113 @@ this checkbox enabled will reset it's children as well, otherwise
 the children will just move/rotate according to new state of the
 bone"
 button_pressed = true
-text = "Always update children"
+text = "Apply actions to children"
+autowrap_mode = 3
 
-[node name="BoneOptionSection" type="VBoxContainer" parent="SkeletonSection/HBoxContainer/VBoxContainer"]
+[node name="BoneOptionSection" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer"]
 layout_mode = 2
 
-[node name="BoneProps" type="VBoxContainer" parent="SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection"]
+[node name="BoneProps" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection"]
 unique_name_in_owner = true
-visible = false
 layout_mode = 2
 
-[node name="Section3" type="HBoxContainer" parent="SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps"]
+[node name="Section3" type="HBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps"]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/Section3"]
+[node name="Label" type="Label" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/Section3"]
 layout_mode = 2
 text = "Bone properties"
 
-[node name="HSeparator" type="HSeparator" parent="SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/Section3"]
+[node name="HSeparator" type="HSeparator" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/Section3"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="BoneLabel" type="Label" parent="SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps"]
+[node name="BoneLabel" type="LineEdit" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Name:"
+editable = false
 
-[node name="AddTexture" type="Button" parent="SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps"]
+[node name="Adders" type="HBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps"]
 layout_mode = 2
-text = "Add new texture"
+alignment = 2
 
-[node name="UtilitiesSection" type="VBoxContainer" parent="SkeletonSection/HBoxContainer/VBoxContainer"]
+[node name="AddBone" type="Button" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/Adders"]
+custom_minimum_size = Vector2(25, 25)
+layout_mode = 2
+tooltip_text = "Add new bone as a child to this bone."
+
+[node name="TextureRect" type="TextureRect" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/Adders/AddBone"]
+texture_filter = 1
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 3.0
+offset_top = 3.0
+offset_right = -3.0
+offset_bottom = -3.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_kpe34")
+expand_mode = 1
+
+[node name="AddTexture" type="Button" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/Adders"]
+custom_minimum_size = Vector2(25, 25)
+layout_mode = 2
+tooltip_text = "Add new pixel layer to this bone"
+
+[node name="TextureRect" type="TextureRect" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/Adders/AddTexture"]
+texture_filter = 1
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 2.0
+offset_top = 2.0
+offset_right = -2.0
+offset_bottom = -2.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_66q0l")
+expand_mode = 1
+
+[node name="SlidersContainer" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps"]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="QuickSetBones" type="MenuButton" parent="SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection"]
+[node name="HSeparator" type="HSeparator" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps"]
+layout_mode = 2
+
+[node name="UtilitiesSection" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="QuickSetBones" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection"]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Quickly place bones over their respective sprites."
 text = "Quick Set Bones"
 flat = false
 
-[node name="CopyPoseFrom" type="MenuButton" parent="SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection"]
+[node name="CopyPoseFrom" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection"]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Copies properties of selected bones from chosen frame to current frame."
 text = "Copy Pose From"
 flat = false
 
-[node name="ForceRefreshPose" type="MenuButton" parent="SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection"]
+[node name="ForceRefreshPose" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection"]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Force re-generates the pose of chosen frames"
 text = "Force Refresh Pose"
 flat = false
 
-[node name="HBoxContainer" type="HBoxContainer" parent="SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection"]
+[node name="HBoxContainer" type="HBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection"]
 layout_mode = 2
 
-[node name="TweenSkeleton" type="MenuButton" parent="SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/HBoxContainer"]
+[node name="TweenSkeleton" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/HBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -181,39 +241,100 @@ tooltip_text = "Gererates In-Betweens from a chosen start frame to the current f
 text = "Tween Skeleton"
 flat = false
 
-[node name="Warn" type="Button" parent="SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/HBoxContainer"]
+[node name="Warn" type="Button" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/HBoxContainer"]
 layout_mode = 2
 text = "[ ! ]"
 flat = true
 
-[node name="ResetSection" type="VBoxContainer" parent="SkeletonSection/HBoxContainer/VBoxContainer"]
+[node name="ResetSection" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="RotationReset" type="MenuButton" parent="SkeletonSection/HBoxContainer/VBoxContainer/ResetSection"]
+[node name="RotationReset" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/ResetSection"]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Resets the rotation of selected bones"
 text = "Bone Rotation"
 flat = false
 
-[node name="PositionReset" type="MenuButton" parent="SkeletonSection/HBoxContainer/VBoxContainer/ResetSection"]
+[node name="PositionReset" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/ResetSection"]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Resets the position of selected bones"
 text = "Bone Position"
 flat = false
 
-[connection signal="toggled" from="GeneralProperties/LiveUpdateCheckbox" to="." method="_on_live_update_pressed"]
-[connection signal="toggled" from="GeneralProperties/AllowChaining" to="." method="_on_allow_chaining_toggled"]
-[connection signal="toggled" from="GeneralProperties/InverseKinematics" to="." method="_on_inverse_kinematics_toggled"]
-[connection signal="item_selected" from="IKSection/HBoxContainer/IKOptions/HBoxContainer/AlgorithmOption" to="." method="_on_algorithm_selected"]
-[connection signal="toggled" from="SkeletonSection/HBoxContainer/VBoxContainer/IncludeChildrenCheckbox" to="." method="_on_include_children_checkbox_toggled"]
-[connection signal="pressed" from="SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/AddTexture" to="." method="_on_add_texture_pressed"]
-[connection signal="about_to_popup" from="SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/QuickSetBones" to="." method="_on_quick_set_bones_menu_about_to_popup"]
-[connection signal="about_to_popup" from="SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/CopyPoseFrom" to="." method="_on_copy_pose_from_about_to_popup"]
-[connection signal="about_to_popup" from="SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/ForceRefreshPose" to="." method="_on_force_refresh_pose_about_to_popup"]
-[connection signal="about_to_popup" from="SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/HBoxContainer/TweenSkeleton" to="." method="_on_tween_skeleton_about_to_popup"]
-[connection signal="pressed" from="SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/HBoxContainer/Warn" to="." method="_on_warn_pressed"]
-[connection signal="about_to_popup" from="SkeletonSection/HBoxContainer/VBoxContainer/ResetSection/RotationReset" to="." method="_on_rotation_reset_menu_about_to_popup"]
-[connection signal="about_to_popup" from="SkeletonSection/HBoxContainer/VBoxContainer/ResetSection/PositionReset" to="." method="_on_position_reset_menu_about_to_popup"]
+[node name="AllowChaining" type="CheckBox" parent="OptionsContainer/ToolOptions/GeneralProperties"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "When enabled, it will be possible to displace bone and
+rotate it's parent at the same time (like a chain)."
+text = "Allow Chaining"
+
+[node name="InverseKinematics" type="CheckBox" parent="OptionsContainer/ToolOptions/GeneralProperties"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Inverse Kinematics"
+
+[node name="IKSection" type="VBoxContainer" parent="OptionsContainer/ToolOptions"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="OptionsContainer/ToolOptions/IKSection"]
+layout_mode = 2
+
+[node name="Spacer" type="Control" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer"]
+custom_minimum_size = Vector2(10, 0)
+layout_mode = 2
+
+[node name="IKOptions" type="VBoxContainer" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="HBoxContainer" type="HBoxContainer" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions/HBoxContainer"]
+layout_mode = 2
+text = "Algorithm:"
+
+[node name="AlgorithmOption" type="OptionButton" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions/HBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+alignment = 1
+selected = 0
+item_count = 2
+popup/item_0/text = "FABRIK"
+popup/item_0/id = 0
+popup/item_1/text = "CCDIK"
+popup/item_1/id = 1
+
+[node name="LockPoseInfo" type="RichTextLabel" parent="OptionsContainer/ToolOptions"]
+unique_name_in_owner = true
+layout_mode = 2
+bbcode_enabled = true
+text = "[color=green]INFO[/color]
+[color=orange]Skeleton > Lock Pose[/color] is enabled, transformations will not be applied"
+fit_content = true
+scroll_active = false
+horizontal_alignment = 1
+
+[connection signal="pressed" from="PoseLayerCreator/CreatePoseLayer" to="." method="_on_create_pose_layer_pressed"]
+[connection signal="pressed" from="OptionsContainer/SkeletonCreator/CreateBone" to="." method="_on_create_first_bone_pressed"]
+[connection signal="toggled" from="OptionsContainer/ToolOptions/GeneralProperties/LiveUpdateCheckbox" to="." method="_on_live_update_pressed"]
+[connection signal="toggled" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/LockPoseCheckbox" to="." method="_on_lock_pose_checkbox_toggled"]
+[connection signal="toggled" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/IncludeChildrenCheckbox" to="." method="_on_include_children_checkbox_toggled"]
+[connection signal="pressed" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/Adders/AddBone" to="." method="_on_add_bone_pressed"]
+[connection signal="pressed" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/Adders/AddTexture" to="." method="_on_add_texture_pressed"]
+[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/QuickSetBones" to="." method="_on_quick_set_bones_menu_about_to_popup"]
+[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/CopyPoseFrom" to="." method="_on_copy_pose_from_about_to_popup"]
+[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/ForceRefreshPose" to="." method="_on_force_refresh_pose_about_to_popup"]
+[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/HBoxContainer/TweenSkeleton" to="." method="_on_tween_skeleton_about_to_popup"]
+[connection signal="pressed" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/HBoxContainer/Warn" to="." method="_on_warn_pressed"]
+[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/ResetSection/RotationReset" to="." method="_on_rotation_reset_menu_about_to_popup"]
+[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/ResetSection/PositionReset" to="." method="_on_position_reset_menu_about_to_popup"]
+[connection signal="toggled" from="OptionsContainer/ToolOptions/GeneralProperties/AllowChaining" to="." method="_on_allow_chaining_toggled"]
+[connection signal="toggled" from="OptionsContainer/ToolOptions/GeneralProperties/InverseKinematics" to="." method="_on_inverse_kinematics_toggled"]
+[connection signal="item_selected" from="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions/HBoxContainer/AlgorithmOption" to="." method="_on_algorithm_selected"]

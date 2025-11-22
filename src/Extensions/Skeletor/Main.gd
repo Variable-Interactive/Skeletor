@@ -10,7 +10,7 @@ var load_dialog: FileDialog
 func _enter_tree() -> void:
 	api = get_node_or_null("/root/ExtensionsApi")
 	skeleton_manager = preload(
-		"res://src/Extensions/Skeletor/Preview/skeleton_manager.tscn"
+		"res://src/Extensions/Skeletor/Manager/skeleton_manager.tscn"
 	).instantiate()
 	api.general.get_canvas().add_child(skeleton_manager)
 
