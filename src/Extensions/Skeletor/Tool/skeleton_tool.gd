@@ -315,6 +315,10 @@ func _ready() -> void:
 		skeleton_section.set_visible_children(false)
 		skeleton_section.call("_ready")
 
+		bone_props.set_script(COLLAPSIBLE_CONTAINER)
+		bone_props.set_visible_children(false)
+		bone_props.call("_ready")
+
 		utilities_section.set_script(COLLAPSIBLE_CONTAINER)
 		utilities_section.text = "Utilities"
 		utilities_section.set_visible_children(false)
@@ -380,6 +384,7 @@ func get_config() -> Dictionary:
 	config["allow_chaining"] = _allow_chaining
 	config["use_ik"] = _use_ik
 	config["ik_protocol"] = _ik_protocol
+	config["lock_root_bone"] = _lock_root_bone
 	config["chain_length"] = _chain_length
 	config["max_ik_itterations"] = _max_ik_itterations
 	config["ik_error_margin"] = _ik_error_margin
@@ -393,6 +398,7 @@ func set_config(config: Dictionary) -> void:
 	_allow_chaining = config.get("allow_chaining", _allow_chaining)
 	_use_ik = config.get("use_ik", _use_ik)
 	_ik_protocol = config.get("ik_protocol", _ik_protocol)
+	_use_ik = config.get("lock_root_bone", _lock_root_bone)
 	_chain_length = config.get("chain_length", _chain_length)
 	_max_ik_itterations = config.get("max_ik_itterations", _max_ik_itterations)
 	_ik_error_margin = config.get("ik_error_margin", _ik_error_margin)
@@ -404,16 +410,17 @@ func set_config(config: Dictionary) -> void:
 func update_config() -> void:
 	%LiveUpdateCheckbox.button_pressed = _live_update
 	%AllowChaining.button_pressed = _allow_chaining
-	%InverseKinematics.set_pressed_no_signal(_use_ik)
 	%AlgorithmOption.select(_ik_protocol)
+	%InverseKinematics.set_pressed_no_signal(_use_ik)
+	%LockRootBoneCheckbox.set_pressed_no_signal(_lock_root_bone)
+	%IncludeChildrenCheckbox.set_pressed_no_signal(_include_children)
+	%LockPoseCheckbox.set_pressed_no_signal(_lock_pose)
 	_chain_size_slider.set_value_no_signal_update_display(_chain_length)
 	_itteration_slider.set_value_no_signal_update_display(_max_ik_itterations)
 	_error_margin_slider.set_value_no_signal_update_display(_ik_error_margin)
 	# Update Visibility of some UI options
 	%InverseKinematics.visible = _allow_chaining
 	ik_section.visible = _use_ik and _allow_chaining
-	%IncludeChildrenCheckbox.button_pressed = _include_children
-	%LockPoseCheckbox.button_pressed = _lock_pose
 	%LockPoseInfo.visible = _lock_pose
 	_rot_slider.visible = !_lock_pose
 	_pos_slider.visible = !_lock_pose
@@ -546,6 +553,12 @@ func _on_inverse_kinematics_toggled(toggled_on: bool) -> void:
 	save_config()
 
 
+func _on_lock_root_bone_checkbox_toggled(toggled_on: bool) -> void:
+	_lock_root_bone = toggled_on
+	update_config()
+	save_config()
+
+
 ## Selects the Inverse Kinematics algorithm
 func _on_algorithm_selected(index: int) -> void:
 	_ik_protocol = index
@@ -662,7 +675,14 @@ func draw_move(_pos: Vector2i) -> void:
 						var last_gizmo := bone_manager.selected_gizmo
 						var end_point := last_gizmo.rel_to_canvas(last_gizmo.start_point)
 						if end_point.distance_to(mouse_point) > _ik_error_margin:
-							print(Time.get_ticks_msec())
+							# Translate the root bone to compensate for error
+							if not bone_manager.group_names_ordered.is_empty():
+								var first_bone_name := bone_manager.group_names_ordered[0]
+								if first_bone_name in bone_manager.current_frame_bones.keys():
+									var first_bone: SkeletonGizmo = bone_manager.current_frame_bones[
+										first_bone_name
+									]
+									first_bone.start_point += mouse_point - end_point
 					if _live_update and update_canvas:
 						manage_threading_generate_pose()
 					_prev_mouse_position = mouse_point
@@ -1035,8 +1055,9 @@ func display_props():
 		bone_manager.selected_gizmo in bone_manager.current_frame_bones.values()
 		and bone_manager.current_frame == api.project.current_project.current_frame
 	):
+		%BoneInfo.visible = false
 		bone_props.visible = true
-		%BoneLabel.text = tr("Name:") + " " + bone_manager.selected_gizmo.bone_name
+		bone_props.text = tr("Bone:") + " " + bone_manager.selected_gizmo.bone_name
 		_rot_slider.value = rad_to_deg(bone_manager.selected_gizmo.bone_rotation)
 		_pos_slider.value = bone_manager.selected_gizmo.rel_to_canvas(
 			bone_manager.selected_gizmo.start_point
@@ -1045,6 +1066,7 @@ func display_props():
 		_pos_slider.value_changed.connect(_on_position_changed)
 	else:
 		bone_props.visible = false
+		%BoneInfo.visible = true
 
 
 func manage_threading_generate_pose():
