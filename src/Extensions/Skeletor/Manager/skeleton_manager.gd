@@ -2,7 +2,8 @@ class_name BoneManager
 extends Node2D
 
 signal pose_layer_changed
-signal sync_ui
+@warning_ignore("unused_signal")
+signal sync_ui  # Used by tools
 
 var api: Node
 var global: Node

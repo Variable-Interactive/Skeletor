@@ -14,16 +14,17 @@ var live_thread := Thread.new()
 
 var _live_update := false
 var _allow_chaining := false
+var _lock_pose := false
+
 var _use_ik := false
 var _ik_protocol: int = IKAlgorithms.FABRIK
 var _chain_length: int = 2
 var _max_ik_itterations: int = 20
 var _ik_error_margin: float = 0.1
 var _include_children := true
-var _lock_pose := false
+
 var _displace_offset := Vector2.ZERO
 var _prev_mouse_position := Vector2.INF
-var _distance_to_parent: float = 0
 var _chained_gizmo = null
 var _rot_slider: TextureProgressBar
 var _pos_slider: HBoxContainer
@@ -601,17 +602,6 @@ func draw_start(_pos: Vector2i) -> void:
 	if _prev_mouse_position == Vector2.INF:
 		_displace_offset = bone_manager.selected_gizmo.rel_to_start_point(mouse_point)
 		_prev_mouse_position = mouse_point
-	# In chaining mode, during movement (modify_mode == SkeletonGizmo.DISPLACE), we rotate the
-	# parent mode as well, so we should set the parent's modify_mode to SkeletonGizmo.NONE as well.
-	if _allow_chaining and bone_manager.is_bone_parent_valid(bone_manager.selected_gizmo):
-		var parent_bone = bone_manager.current_frame_bones[
-			bone_manager.selected_gizmo.parent_bone_name
-		]
-		var bone_start: Vector2i = bone_manager.selected_gizmo.rel_to_canvas(
-			bone_manager.selected_gizmo.start_point
-		)
-		var parent_start: Vector2i = parent_bone.rel_to_canvas(parent_bone.start_point)
-		_distance_to_parent = bone_start.distance_to(parent_start)
 	display_props()
 
 
