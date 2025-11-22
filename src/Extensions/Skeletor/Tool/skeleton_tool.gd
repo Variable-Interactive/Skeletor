@@ -469,6 +469,10 @@ func _on_create_first_bone_pressed() -> void:
 func _on_pose_layer_changed():
 	pose_layer_creator.visible = (bone_manager.pose_layer == null)
 	options_container.visible = !pose_layer_creator.visible
+	await get_tree().process_frame
+	await get_tree().process_frame
+	skeleton_creator.visible = bone_manager.current_frame_data.is_empty()
+	tool_options.visible = !skeleton_creator.visible
 
 
 func _on_project_data_changed(_project):
@@ -578,6 +582,7 @@ func _exit_tree() -> void:
 	if bone_manager:  # Let the manager know this tool is no longer present
 		bone_manager.active_skeleton_tools.erase(self)
 		bone_manager.queue_redraw()
+		bone_manager.pose_layer_changed.disconnect(_on_pose_layer_changed)
 	if api:  # Disconnect any remaining rogue signals
 		api.signals.signal_cel_switched(display_props, true)
 		api.signals.signal_project_switched(display_props, true)
@@ -1023,8 +1028,6 @@ func get_selected_bone_names(popup: PopupMenu, bone_index: int) -> PackedStringA
 
 
 func display_props():
-	skeleton_creator.visible = bone_manager.current_frame_data.is_empty()
-	tool_options.visible = !skeleton_creator.visible
 	if _rot_slider.value_changed.is_connected(_on_rotation_changed):  # works for both signals
 		_rot_slider.value_changed.disconnect(_on_rotation_changed)
 		_pos_slider.value_changed.disconnect(_on_position_changed)
