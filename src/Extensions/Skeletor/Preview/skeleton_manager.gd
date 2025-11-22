@@ -258,6 +258,13 @@ func fix_skeleton_heirarchy(data: Dictionary) -> void:
 			var parent_name = ""
 			if layer.parent:
 				parent_name = layer.parent.name
+			if layer.name in data.keys():
+				var real_parent_bone_name = data[layer.name].get("parent_bone_name", "")
+				# If it's parent turns out to be different then it is an impostor
+				# and we should change it's name. This is a crude methadology but it gets
+				# the job done in most cases
+				if parent_name != real_parent_bone_name:
+					layer.name = get_valid_name(layer.name, data.keys())
 			# A new Group layer is discovered. Catalogue it!
 			if not layer.name in data.keys():
 				data[layer.name] = SkeletonGizmo.generate_empty_data(layer.name, parent_name)
