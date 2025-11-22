@@ -2,6 +2,7 @@ class_name BoneManager
 extends Node2D
 
 signal pose_layer_changed
+signal sync_ui
 
 var api: Node
 var global: Node

@@ -340,6 +340,7 @@ func _ready() -> void:
 		force_refresh_pose.get_popup().index_pressed.connect(refresh_pose)
 
 	# Loading finished, Assign name to Node and load configuration
+	bone_manager.sync_ui.connect(_sync_ui)
 	kname = name.replace(" ", "_").to_lower()
 	pose_layer_creator.visible = (bone_manager.pose_layer == null)
 	options_container.visible = !pose_layer_creator.visible
@@ -347,6 +348,16 @@ func _ready() -> void:
 	tool_options.visible = !skeleton_creator.visible
 
 	load_config()
+
+
+# UI "updating" signals
+func _sync_ui(from_idx: int, data: Dictionary):
+	if tool_slot.button != from_idx:
+		bone_manager.sync_ui.disconnect(_sync_ui)
+		set_config(data)
+		update_config()
+		save_config()
+		bone_manager.sync_ui.connect(_sync_ui)
 
 
 ## Loads, Sets and Updates the UI
@@ -403,6 +414,7 @@ func update_config() -> void:
 	if bone_manager:
 		# Update properties ofthe manager
 		bone_manager.bones_chained = _allow_chaining
+		bone_manager.sync_ui.emit(tool_slot.button, get_config())
 		bone_manager.queue_redraw()
 
 
