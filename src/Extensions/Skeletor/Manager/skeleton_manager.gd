@@ -441,12 +441,17 @@ func manage_ui_signals(is_disconnecting := false) -> void:
 	api.signals.signal_current_cel_texture_changed(
 		_on_pixel_layers_texture_changed, is_disconnecting
 	)
-	if is_disconnecting:
-		if global.layer_vbox.child_order_changed.is_connected(_on_project_layers_moved):
-			global.layer_vbox.child_order_changed.disconnect(_on_project_layers_moved)
-	else:
-		if not global.layer_vbox.child_order_changed.is_connected(_on_project_layers_moved):
-			global.layer_vbox.child_order_changed.connect(_on_project_layers_moved)
+	var layer_vbox: VBoxContainer = global.get("layer_vbox")
+	if !layer_vbox:  # The variable to layer_vbox got moved in 1.1.7
+		layer_vbox = global.animation_timeline.get("layer_vbox")
+	print(layer_vbox)
+	if layer_vbox:
+		if is_disconnecting:
+			if layer_vbox.child_order_changed.is_connected(_on_project_layers_moved):
+				layer_vbox.child_order_changed.disconnect(_on_project_layers_moved)
+		else:
+			if not layer_vbox.child_order_changed.is_connected(_on_project_layers_moved):
+				layer_vbox.child_order_changed.connect(_on_project_layers_moved)
 
 
 ## Manages connections of signals that have to be re-determined everytime project switches.
