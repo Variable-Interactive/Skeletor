@@ -565,7 +565,12 @@ func _on_layer_name_changed(layer: RefCounted, old_name: String) -> void:
 
 
 func manage_layer_visibility() -> void:
-	var pose_layer_visible = (api.project.current_project.current_layer == pose_layer.index)
+	var project = api.project.current_project
+	var ancestors = project.layers[project.current_layer].get_ancestors()
+	var pose_layer_visible = (
+		project.current_layer == pose_layer.index
+		or ancestors.is_empty()
+	)
 	if pose_layer_visible != pose_layer.visible:
 		pose_layer.visible = pose_layer_visible
 		if not pose_layer.visible:  # Clear gizmos when we leave PoseLayer

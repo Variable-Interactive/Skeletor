@@ -105,7 +105,7 @@ func _ready() -> void:
 		_chain_size_slider.allow_lesser = false
 		_chain_size_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_chain_size_slider.prefix = tr("Chain Size:")
-		_chain_size_slider.min_value = 1
+		_chain_size_slider.min_value = 2
 		_chain_size_slider.max_value = 10
 		_chain_size_slider.step = 1
 		_chain_size_slider.name = "ChainSize"
@@ -188,6 +188,8 @@ func _ready() -> void:
 	options_container.visible = !pose_layer_creator.visible
 	skeleton_creator.visible = bone_manager.current_frame_bones.is_empty()
 	tool_options.visible = !skeleton_creator.visible
+	if bone_manager.pose_layer:
+		%PoseVisibilityAlert.visible = not bone_manager.pose_layer.get_ancestors().is_empty()
 
 	load_config()
 
@@ -316,6 +318,8 @@ func _on_pose_layer_changed():
 
 
 func _on_project_data_changed(_project):
+	if bone_manager.pose_layer:
+		%PoseVisibilityAlert.visible = not bone_manager.pose_layer.get_ancestors().is_empty()
 	pose_layer_creator.visible = (bone_manager.pose_layer == null)
 	options_container.visible = !pose_layer_creator.visible
 	skeleton_creator.visible = bone_manager.current_frame_bones.is_empty()

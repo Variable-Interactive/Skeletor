@@ -71,6 +71,16 @@ text = "Create Group"
 unique_name_in_owner = true
 layout_mode = 2
 
+[node name="PoseVisibilityAlert" type="RichTextLabel" parent="OptionsContainer/ToolOptions"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+bbcode_enabled = true
+text = "[color=red]Alert[/color]
+Pose Layer is inside a Group layer! Pose will not be visible!!"
+fit_content = true
+horizontal_alignment = 1
+
 [node name="Section3" type="HBoxContainer" parent="OptionsContainer/ToolOptions"]
 layout_mode = 2
 
@@ -288,6 +298,13 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 
+[node name="LockRootBoneCheckbox" type="CheckBox" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "If enabled, position of the chain's root bone stays fixed"
+button_pressed = true
+text = "Lock root bone"
+
 [node name="HBoxContainer" type="HBoxContainer" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions"]
 layout_mode = 2
 
@@ -306,13 +323,6 @@ popup/item_0/text = "FABRIK"
 popup/item_0/id = 0
 popup/item_1/text = "CCDIK"
 popup/item_1/id = 1
-
-[node name="LockRootBoneCheckbox" type="CheckBox" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions"]
-unique_name_in_owner = true
-layout_mode = 2
-tooltip_text = "If enabled, position of the chain's root bone stays fixed"
-button_pressed = true
-text = "Lock root bone"
 
 [node name="LockPoseInfo" type="RichTextLabel" parent="OptionsContainer/ToolOptions"]
 unique_name_in_owner = true
@@ -341,5 +351,5 @@ horizontal_alignment = 1
 [connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/ResetSection/PositionReset" to="." method="_on_position_reset_menu_about_to_popup"]
 [connection signal="toggled" from="OptionsContainer/ToolOptions/GeneralProperties/AllowChaining" to="." method="_on_allow_chaining_toggled"]
 [connection signal="toggled" from="OptionsContainer/ToolOptions/GeneralProperties/InverseKinematics" to="." method="_on_inverse_kinematics_toggled"]
-[connection signal="item_selected" from="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions/HBoxContainer/AlgorithmOption" to="." method="_on_algorithm_selected"]
 [connection signal="toggled" from="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions/LockRootBoneCheckbox" to="." method="_on_lock_root_bone_checkbox_toggled"]
+[connection signal="item_selected" from="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions/HBoxContainer/AlgorithmOption" to="." method="_on_algorithm_selected"]

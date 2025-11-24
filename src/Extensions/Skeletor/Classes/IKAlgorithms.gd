@@ -15,7 +15,7 @@ static func get_ik_cels(
 		b_names.push_front(p.parent_bone_name)
 		p = from_bones.get(p.parent_bone_name, null)
 		i += 1
-		if i > chain_length:
+		if i >= chain_length:
 			break
 	return bone_chain
 
