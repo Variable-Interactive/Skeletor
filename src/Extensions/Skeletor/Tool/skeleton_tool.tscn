@@ -181,6 +181,10 @@ grow_vertical = 2
 texture = ExtResource("2_66q0l")
 expand_mode = 1
 
+[node name="RotationAlgorithm" type="OptionButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps"]
+unique_name_in_owner = true
+layout_mode = 2
+
 [node name="SlidersContainer" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -327,6 +331,7 @@ horizontal_alignment = 1
 [connection signal="toggled" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/IncludeChildrenCheckbox" to="." method="_on_include_children_checkbox_toggled"]
 [connection signal="pressed" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/Adders/AddBone" to="." method="_on_add_bone_pressed"]
 [connection signal="pressed" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/Adders/AddTexture" to="." method="_on_add_texture_pressed"]
+[connection signal="item_selected" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/RotationAlgorithm" to="." method="_on_rotation_algorithm_item_selected"]
 [connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/QuickSetBones" to="." method="_on_quick_set_bones_menu_about_to_popup"]
 [connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/CopyPoseFrom" to="." method="_on_copy_pose_from_about_to_popup"]
 [connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/ForceRefreshPose" to="." method="_on_force_refresh_pose_about_to_popup"]
