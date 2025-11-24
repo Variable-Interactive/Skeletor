@@ -30,7 +30,7 @@ var gizmo_rotate_origin: float = 0:  ## Unit is Radians
 	set(value):
 		var diff = value - gizmo_rotate_origin
 		if not is_equal_approx(diff, 0):
-			gizmo_rotate_origin = value
+			gizmo_rotate_origin = wrapf(value, -PI, PI)
 			update_bone_property("gizmo_rotate_origin", false, diff)
 var start_point: Vector2:  ## This is relative to the gizmo_origin
 	set(value):
@@ -42,7 +42,7 @@ var bone_rotation: float = 0:  ## This is relative to the gizmo_rotate_origin (R
 	set(value):
 		var diff = value - bone_rotation
 		if not is_equal_approx(diff, 0):
-			bone_rotation = value
+			bone_rotation = wrapf(value, -PI, PI)
 			update_bone_property("bone_rotation", !should_update_silently, diff)
 var transformation_algorithm: int = 0:  ## points to DrawingAlgos.RotationAlgorithm
 	set(value):
@@ -70,16 +70,14 @@ var modify_mode: int = SkeletonBone.NONE:
 		bone_set_updated.emit()
 var ignore_rotation_hover := false
 var should_update_silently := false
-var _bone_set: Dictionary  # Reference to the BoneManager.current_bone_group()
-var _host_project: RefCounted
+var _bone_set: Dictionary[String, SkeletonBone]  # Influence of the bone
 var _old_hover := NONE
 
 
 func _init(
-	host_project: RefCounted, bone_set: Dictionary[String, SkeletonBone], data := {}
+	bone_set: Dictionary[String, SkeletonBone], data := {}
 ) -> void:
 	deserialize(data, true)
-	_host_project = host_project
 	_bone_set = bone_set
 
 
@@ -91,8 +89,6 @@ func is_bone_parent_valid() -> bool:
 ## If a propagatable property (movement, rotation) is done on a SkeletonBone object, this method
 ## Gets called automatically to update/transform all it's children automatically as well
 func update_bone_property(property: String, should_propagate: bool, diff) -> void:
-	if not is_instance_valid(_host_project):
-		return
 	if not _bone_set:
 		return
 	if not _bone_set.values().has(self):  # Haven been added to the set yet
@@ -101,26 +97,20 @@ func update_bone_property(property: String, should_propagate: bool, diff) -> voi
 	if !should_propagate:
 		bone_set_updated.emit()
 		return
-	for layer in _host_project.layers:  ## update first child (This will trigger a chain process)
-		# NOTE: get_layer_type() == 1 means Group layer
-		if layer.get_layer_type() == 1 and layer.parent:
-			if _bone_set[layer.name].parent_bone_name != layer.parent.name:
-				_bone_set[layer.name].parent_bone_name = layer.parent.name
-			if layer.parent.name == bone_name:
-				if _bone_set.has(layer.name):
-					var bone: SkeletonBone = _bone_set[layer.name]
-					bone.set(property, bone.get(property) + diff)
-					if property == "transformation_algorithm":
-						bone.transformation_algorithm = diff
-						continue
-					if _bone_set.has(bone_name) and property == "bone_rotation":
-						var displacement := rel_to_start_point(
-							bone.rel_to_canvas(bone.start_point)
-						)
-						displacement = displacement.rotated(diff)
-						bone.start_point = bone.rel_to_origin(
-							rel_to_canvas(start_point) + displacement
-						)
+	for bone: SkeletonBone in _bone_set.values():  ## update first child (This will trigger a chain process)
+		if bone.parent_bone_name == bone_name:
+			bone.set(property, bone.get(property) + diff)
+			if property == "transformation_algorithm":
+				bone.transformation_algorithm = diff
+				continue
+			if _bone_set.has(bone_name) and property == "bone_rotation":
+				var displacement := rel_to_start_point(
+					bone.rel_to_canvas(bone.start_point)
+				)
+				displacement = displacement.rotated(diff)
+				bone.start_point = bone.rel_to_origin(
+					rel_to_canvas(start_point) + displacement
+				)
 	if is_bone_parent_valid():
 		bone_set_updated.emit()
 
@@ -225,13 +215,9 @@ func rel_to_canvas(pos: Vector2, is_rel_to_start_point := false) -> Vector2:
 	return pos + gizmo_origin + diff
 
 
-## Generates a gizmo (for preview) based on the given data
+## Generates a gizmo (for preview). Called by _draw() of manager
 func draw_gizmo(camera_zoom: Vector2, mouse_point: Vector2, manager: BoneManager) -> void:
-
-	#var frame_cels = project.frames[project.current_frame].cels
-	#var bone_cel: BoneCel = frame_cels[bone.index]
 	var highlight = (self == manager.hover_gizmo or self == manager.selected_gizmo)
-
 	var width: float = (WIDTH if (highlight) else DESELECT_WIDTH) / camera_zoom.x
 	var net_width = width
 	var bone_color := Color.WHITE if (highlight) else Color.GRAY

@@ -705,35 +705,37 @@ func tween_skeleton_data(bone_id: int, from_frame: int, popup: PopupMenu, curren
 	if bone_manager:
 		if current_frame != bone_manager.current_frame:
 			return
+		var project = api.project.current_project
+		# Get the bone names to animate
 		var bone_names := get_selected_bone_names(popup, bone_id)
-		var start_data: Dictionary = bone_manager.load_frame_info(
-			api.project.current_project, from_frame
-		)
-		var end_data: Dictionary = bone_manager.load_frame_info(
-			api.project.current_project, current_frame
-		)
+		# Get data of starting frame
+		var start_data: Dictionary = bone_manager.load_frame_data(project, from_frame)
+		# Get data of ending frame
+		var end_data: Dictionary = bone_manager.load_frame_data(project, current_frame)
 		for frame_idx in range(from_frame + 1, current_frame):
-			var frame_info: Dictionary = bone_manager.load_frame_info(
-				api.project.current_project, frame_idx
-			)
+			var frame_bones := bone_manager.load_frame_bones(project, frame_idx)
 			for bone_name in bone_names:
+				# Go through some failsafes (Not necessary but it's good practice where possible)
 				if (
-					bone_name in frame_info.keys()
-					and bone_name in start_data.keys()
-					and bone_name in end_data.keys()
+					bone_name in frame_bones.keys()  # is valid part of frame bone
+					and bone_name in start_data.keys()  # is valid part of start data
+					and bone_name in end_data.keys()  # is valid part of end data
 				):
-					var bone_dict: Dictionary = frame_info[bone_name]
-					for data_key: String in bone_dict.keys():
-						if typeof(bone_dict[data_key]) != TYPE_STRING:
-							bone_dict[data_key] = Tween.interpolate_value(
-								start_data[bone_name][data_key],
-								end_data[bone_name][data_key] - start_data[bone_name][data_key],
-								frame_idx - from_frame,
-								current_frame - from_frame,
-								Tween.TRANS_LINEAR,
-								Tween.EASE_IN
+					var bone: SkeletonBone = frame_bones[bone_name]
+					for data_key: String in start_data[bone_name].keys():
+						var property = bone.get(data_key)
+						if typeof(property) != TYPE_STRING and property != null:
+							bone.set(
+								data_key, Tween.interpolate_value(
+									start_data[bone_name][data_key],
+									end_data[bone_name][data_key] - start_data[bone_name][data_key],
+									frame_idx - from_frame,
+									current_frame - from_frame,
+									Tween.TRANS_LINEAR,
+									Tween.EASE_IN
+								)
 							)
-			bone_manager.save_frame_info(api.project.current_project, frame_info, frame_idx)
+			bone_manager.save_frame_info(project, frame_bones, frame_idx)
 			bone_manager.generate_pose(frame_idx)
 		copy_pose_from.get_popup().hide()
 		copy_pose_from.get_popup().clear(true)  # To save Memory

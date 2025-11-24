@@ -223,7 +223,7 @@ func fix_skeleton_heirarchy(data: Dictionary[String, SkeletonBone]) -> void:
 					layer.name = get_valid_name(layer.name, current_frame_bones.keys())
 			# A new Group layer is discovered. Catalogue it!
 			if not layer.name in data.keys():
-				var new_bone := SkeletonBone.new(project, current_frame_bones)
+				var new_bone := SkeletonBone.new(current_frame_bones)
 				new_bone.bone_set_updated.connect(queue_redraw)
 				new_bone.bone_name = layer.name
 				new_bone.parent_bone_name = layer_parent_name
@@ -534,18 +534,25 @@ func _on_layer_name_changed(layer: RefCounted, old_name: String) -> void:
 					# Needed if bones have been generated for this frame
 					var rename_bone: SkeletonBone = current_frame_bones[old_name]
 					rename_bone.bone_name = layer.name
-				var gizmo_to_rename: SkeletonBone = current_frame_bones[old_name]
-				current_frame_bones.erase(old_name)
-				gizmo_to_rename.bone_name = layer.name
-				if layer.parent:
-					gizmo_to_rename.parent_bone_name = layer.parent.name
-				current_frame_bones[layer.name] = gizmo_to_rename
+				# Start renaming
+				for frame in project.frames.size():
+					var bone_set := current_frame_bones
+					if frame != current_frame:  # Fix other frames for this missing data as well
+						bone_set = load_frame_bones(project, frame)
+					var gizmo_to_rename: SkeletonBone = bone_set[old_name]
+					bone_set.erase(old_name)
+					gizmo_to_rename.bone_name = layer.name
+					if layer.parent:
+						gizmo_to_rename.parent_bone_name = layer.parent.name
+					bone_set[layer.name] = gizmo_to_rename
+					if frame != current_frame:  # NOTE: frame == current_frame is done later
+						save_frame_info(project, bone_set, frame)
 				layer.name_changed.connect(_on_layer_name_changed.bind(layer, layer.name))
 			else: ## It's a new bone
 				var layer_parent_name = ""
 				if layer.parent:
 					layer_parent_name = layer.parent.name
-				var new_bone := SkeletonBone.new(project, current_frame_bones)
+				var new_bone := SkeletonBone.new(current_frame_bones)
 				layer.name = get_valid_name(layer.name, current_frame_bones.keys())
 				new_bone.bone_set_updated.connect(queue_redraw)
 				new_bone.bone_name = layer.name
@@ -652,7 +659,7 @@ func load_frame_bones(
 					if data.get(bone_name, null) == null:
 						data.erase(bone_name)
 						continue
-					var new_bone := SkeletonBone.new(project, frame_bones, data[bone_name])
+					var new_bone := SkeletonBone.new(frame_bones, data[bone_name])
 					new_bone.bone_set_updated.connect(queue_redraw)
 					frame_bones[bone_name] = new_bone
 				return frame_bones
