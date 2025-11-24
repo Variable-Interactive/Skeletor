@@ -229,13 +229,6 @@ tooltip_text = "Copies properties of selected bones from chosen frame to current
 text = "Copy Pose From"
 flat = false
 
-[node name="ForceRefreshPose" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection"]
-unique_name_in_owner = true
-layout_mode = 2
-tooltip_text = "Force re-generates the pose of chosen frames"
-text = "Force Refresh Pose"
-flat = false
-
 [node name="HBoxContainer" type="HBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection"]
 layout_mode = 2
 
@@ -251,6 +244,13 @@ flat = false
 layout_mode = 2
 text = "[ ! ]"
 flat = true
+
+[node name="ForceRefreshPose" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Force re-generates the pose of chosen frames"
+text = "Force Refresh Pose"
+flat = false
 
 [node name="ResetSection" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer"]
 unique_name_in_owner = true
@@ -344,9 +344,9 @@ horizontal_alignment = 1
 [connection signal="item_selected" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/RotationAlgorithm" to="." method="_on_rotation_algorithm_item_selected"]
 [connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/QuickSetBones" to="." method="_on_quick_set_bones_menu_about_to_popup"]
 [connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/CopyPoseFrom" to="." method="_on_copy_pose_from_about_to_popup"]
-[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/ForceRefreshPose" to="." method="_on_force_refresh_pose_about_to_popup"]
 [connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/HBoxContainer/TweenSkeleton" to="." method="_on_tween_skeleton_about_to_popup"]
 [connection signal="pressed" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/HBoxContainer/Warn" to="." method="_on_warn_pressed"]
+[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/ForceRefreshPose" to="." method="_on_force_refresh_pose_about_to_popup"]
 [connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/ResetSection/RotationReset" to="." method="_on_rotation_reset_menu_about_to_popup"]
 [connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/ResetSection/PositionReset" to="." method="_on_position_reset_menu_about_to_popup"]
 [connection signal="toggled" from="OptionsContainer/ToolOptions/GeneralProperties/AllowChaining" to="." method="_on_allow_chaining_toggled"]
