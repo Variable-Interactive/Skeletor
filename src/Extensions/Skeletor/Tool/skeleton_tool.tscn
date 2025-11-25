@@ -349,6 +349,7 @@ popup/item_1/id = 1
 
 [node name="LockPoseFixer" type="VBoxContainer" parent="OptionsContainer"]
 unique_name_in_owner = true
+visible = false
 layout_mode = 2
 size_flags_vertical = 3
 
