@@ -389,3 +389,4 @@ text = "Turn off"
 [connection signal="toggled" from="OptionsContainer/ToolOptions/GeneralProperties/InverseKinematics" to="." method="_on_inverse_kinematics_toggled"]
 [connection signal="toggled" from="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions/LockRootBoneCheckbox" to="." method="_on_lock_root_bone_checkbox_toggled"]
 [connection signal="item_selected" from="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions/HBoxContainer/AlgorithmOption" to="." method="_on_algorithm_selected"]
+[connection signal="pressed" from="OptionsContainer/LockPoseFixer/LockPoseQuickAccess" to="." method="_on_lock_pose_quick_access_pressed"]
