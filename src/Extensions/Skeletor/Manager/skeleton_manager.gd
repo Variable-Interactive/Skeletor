@@ -32,7 +32,7 @@ var current_frame: int = -1
 var prev_layer_count: int = 0
 var prev_frame_count: int = 0
 var assign_pose_button_id: int
-var queue_generate := false
+var queue_generate_frames: PackedInt32Array
 var queue_conflict_check := false
 # The shader is located in pixelorama
 var blend_layer_shader = load("res://src/Shaders/BlendLayers.gdshader")
@@ -46,7 +46,7 @@ var active_skeleton_tools := Array()
 var rotation_generator: RefCounted
 var blend_generator: RefCounted
 var rid_cache: Dictionary[int, Dictionary]
-
+var cursor_reset_delay := 10  # Number of _input cals confirming the cursor should reset
 
 ## Default methods
 
@@ -79,6 +79,13 @@ func _exit_tree() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	cursor_reset_delay = clampi(cursor_reset_delay - 1, 0, cursor_reset_delay)
+	if cursor_reset_delay == 0:  # Done to avoid cursor flickering
+		var cursor = Input.CURSOR_ARROW
+		if global.cross_cursor:
+			cursor = Input.CURSOR_CROSS
+		if DisplayServer.cursor_get_shape() != cursor:
+			Input.set_default_cursor_shape(cursor)
 	var project = api.project.current_project
 	if not pose_layer:
 		return
@@ -500,13 +507,17 @@ func _on_pixel_layers_texture_changed() -> void:
 	if not is_pose_layer(
 		api.project.current_project.layers[api.project.current_project.current_layer]
 	):
-		queue_generate = true
+		for cels in api.project.current_project.selected_cels:
+			if not cels[0] in queue_generate_frames:
+				queue_generate_frames.append(cels[0])
 
 
 func _on_cel_switched() -> void:
 	if current_frame_bones.is_empty():
 		# Needs a render for the first time
-		queue_generate = true
+		for cels in api.project.current_project.selected_cels:
+			if not cels[0] in queue_generate_frames:
+				queue_generate_frames.append(cels[0])
 	update_frame_data()
 	if !is_sane(api.project.current_project):  ## Do nothing more if pose layer doesn't exist
 		return
@@ -531,7 +542,9 @@ func _on_project_layers_moved() -> void:
 		if api.project.current_project.current_layer == pose_layer.index:
 			generate_pose()
 		else:
-			queue_generate = true
+			for cels in api.project.current_project.selected_cels:
+				if not cels[0] in queue_generate_frames:
+					queue_generate_frames.append(cels[0])
 
 
 func _on_layer_name_changed(layer: RefCounted, old_name: String) -> void:
@@ -608,9 +621,10 @@ func manage_layer_visibility() -> void:
 				api.tools.autoload().assign_tool("Pencil", MOUSE_BUTTON_LEFT)
 		if api.project.current_project.current_layer == pose_layer.index:
 			# generate_pose if we qued it and are now back on PoseLayer
-			if queue_generate and pose_layer.visible:
-				queue_generate = false
-				generate_pose()
+			if not queue_generate_frames.is_empty() and pose_layer.visible:
+				for frame_idx in queue_generate_frames:
+					generate_pose(frame_idx)
+				queue_generate_frames.clear()
 		# Also change visibility of all the root folders
 		for layer_idx in api.project.current_project.layers.size():
 			var layer = api.project.current_project.layers[layer_idx]

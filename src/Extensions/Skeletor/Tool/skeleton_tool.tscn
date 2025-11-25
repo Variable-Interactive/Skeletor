@@ -131,7 +131,7 @@ expand_mode = 1
 [node name="AddTexture" type="Button" parent="OptionsContainer/ToolOptions/Adders"]
 custom_minimum_size = Vector2(25, 25)
 layout_mode = 2
-tooltip_text = "Add new pixel layer to this bone"
+tooltip_text = "Edit bone texture"
 
 [node name="TextureRect" type="TextureRect" parent="OptionsContainer/ToolOptions/Adders/AddTexture"]
 texture_filter = 1
@@ -347,15 +347,27 @@ popup/item_0/id = 0
 popup/item_1/text = "CCDIK"
 popup/item_1/id = 1
 
-[node name="LockPoseInfo" type="RichTextLabel" parent="OptionsContainer/ToolOptions"]
+[node name="LockPoseFixer" type="VBoxContainer" parent="OptionsContainer"]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_vertical = 3
+
+[node name="PanelContainer" type="PanelContainer" parent="OptionsContainer/LockPoseFixer"]
+layout_mode = 2
+
+[node name="RichTextLabel" type="RichTextLabel" parent="OptionsContainer/LockPoseFixer/PanelContainer"]
+layout_mode = 2
+size_flags_vertical = 3
 bbcode_enabled = true
 text = "[color=green]INFO[/color]
 [color=orange]Skeleton > Lock Pose[/color] is enabled, transformations will not be applied"
 fit_content = true
 scroll_active = false
 horizontal_alignment = 1
+
+[node name="LockPoseQuickAccess" type="Button" parent="OptionsContainer/LockPoseFixer"]
+layout_mode = 2
+text = "Turn off"
 
 [connection signal="pressed" from="PoseLayerCreator/CreatePoseLayer" to="." method="_on_create_pose_layer_pressed"]
 [connection signal="pressed" from="PoseLayerSelector/SelectPoseLayer" to="." method="_on_select_pose_layer_pressed"]

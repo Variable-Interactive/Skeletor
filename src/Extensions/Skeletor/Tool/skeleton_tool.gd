@@ -261,7 +261,7 @@ func update_config() -> void:
 	# Update Visibility of some UI options
 	%InverseKinematics.visible = _allow_chaining
 	ik_section.visible = _use_ik and _allow_chaining
-	%LockPoseInfo.visible = _lock_pose
+	%LockPoseFixer.visible = _lock_pose
 	_rot_slider.visible = !_lock_pose
 	_pos_slider.visible = !_lock_pose
 	if bone_manager:
@@ -287,7 +287,7 @@ func _on_create_pose_layer_pressed() -> void:
 	var project = api.project.current_project
 	project.current_layer = 0  # Layer above which the PoseLayer should be added
 	api.general.get_global().animation_timeline.on_add_layer_list_id_pressed(
-		api.general.get_global().LayerTypes.PIXEL
+		api.tools.LayerTypes.PIXEL
 	)
 	# Move down twice to avoid being part of any Groups
 	api.general.get_global().animation_timeline.change_layer_order(false)
@@ -297,7 +297,7 @@ func _on_create_pose_layer_pressed() -> void:
 		# to point to pose layer
 		if (
 			project.layers[project.current_layer].get_layer_type()
-			== api.general.get_global().LayerTypes.PIXEL
+			== api.tools.LayerTypes.PIXEL
 		):
 			project.layers[project.current_layer].name = "Pose Layer"
 			bone_manager.pose_layer = project.layers[project.current_layer]
@@ -309,7 +309,7 @@ func _on_create_first_bone_pressed() -> void:
 	if not bone_manager.pose_layer:
 		return
 	api.project.add_new_layer(
-		project.layers.size() - 1, "", api.general.get_global().LayerTypes.GROUP
+		project.layers.size() - 1, "", api.tools.LayerTypes.GROUP
 	)
 	# User likely wants it disabled here
 	_lock_pose = true
@@ -384,6 +384,12 @@ func _on_position_changed(value: Vector2):
 
 func _on_include_children_checkbox_toggled(toggled_on: bool) -> void:
 	_include_children = toggled_on
+	update_config()
+	save_config()
+
+
+func _on_lock_pose_quick_access_pressed() -> void:
+	_lock_pose = false
 	update_config()
 	save_config()
 
@@ -639,12 +645,12 @@ func _on_add_bone_pressed() -> void:
 		for layer_idx: int in project.layers.size():
 			if (
 				project.layers[layer_idx].get_layer_type()
-				== api.general.get_global().LayerTypes.GROUP
+				== api.tools.LayerTypes.GROUP
 			):
 				var bone_name: StringName = project.layers[layer_idx].name
 				if bone_name == bone_manager.selected_gizmo.bone_name:
 					api.project.add_new_layer(
-						layer_idx, "", api.general.get_global().LayerTypes.GROUP
+						layer_idx, "", api.tools.LayerTypes.GROUP
 					)
 					# User likely wants it disabled here
 					_lock_pose = true
@@ -652,7 +658,7 @@ func _on_add_bone_pressed() -> void:
 					save_config()
 					var l_index = 0 if !bone_manager.pose_layer else bone_manager.pose_layer.index
 					api.project.select_cels([[project.current_frame, l_index]])
-					break
+					return
 
 
 func _on_add_texture_pressed():
@@ -661,13 +667,20 @@ func _on_add_texture_pressed():
 		for layer_idx: int in project.layers.size():
 			if (
 				project.layers[layer_idx].get_layer_type()
-				== api.general.get_global().LayerTypes.GROUP
+				== api.tools.LayerTypes.GROUP
 			):
 				var bone_name: StringName = project.layers[layer_idx].name
 				if bone_name == bone_manager.selected_gizmo.bone_name:
+					var g_layer = project.layers[layer_idx]
+					var children = g_layer.get_children(false)
+					if not children.is_empty():
+						for child in children:
+							if child.get_layer_type() == api.tools.LayerTypes.PIXEL:
+								api.project.select_cels([[project.current_frame, child.index]])
+								return
 					api.project.add_new_layer(layer_idx)
 					api.project.select_cels([[project.current_frame, layer_idx]])
-					break
+					return
 
 
 ## Feature to quickly set bones to the center of their assigned textures

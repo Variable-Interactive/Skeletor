@@ -238,19 +238,14 @@ func draw_gizmo(
 		if hover == SkeletonBone.NONE:
 			true_hover_mode = SkeletonBone.NONE
 
-	if highlight:
-		var cursor := Input.CURSOR_ARROW
+		manager.cursor_reset_delay = 10
 		match true_hover_mode:
 			SkeletonBone.DISPLACE:
-				cursor = Input.CURSOR_MOVE
+				if DisplayServer.cursor_get_shape() != Input.CURSOR_MOVE:
+					Input.set_default_cursor_shape(Input.CURSOR_MOVE)
 			SkeletonBone.ROTATE:
-				cursor = Input.CURSOR_POINTING_HAND
-			_:
-				cursor = Input.CURSOR_ARROW
-				if manager.global.cross_cursor:
-					cursor = Input.CURSOR_CROSS
-		if DisplayServer.cursor_get_shape() != cursor and highlight:
-			Input.set_default_cursor_shape(cursor)
+				if DisplayServer.cursor_get_shape() != Input.CURSOR_POINTING_HAND:
+					Input.set_default_cursor_shape(Input.CURSOR_POINTING_HAND)
 
 	var transform_start := start_point
 	var bone_end := end_point
