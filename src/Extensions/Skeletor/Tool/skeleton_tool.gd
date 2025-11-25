@@ -46,9 +46,12 @@ var _error_margin_slider: TextureProgressBar
 @onready var tween_skeleton_menu: MenuButton = %TweenSkeleton
 @onready var ik_options: VBoxContainer = %IKOptions
 @onready var bone_props: VBoxContainer = %BoneProps
+@onready var adders: HBoxContainer = %Adders
 @onready var sliders_container: VBoxContainer = %SlidersContainer
+@onready var pose_visibility_alert: RichTextLabel = %PoseVisibilityAlert
 
 @onready var pose_layer_creator: VBoxContainer = %PoseLayerCreator
+@onready var pose_layer_selector: VBoxContainer = %PoseLayerSelector
 @onready var options_container: VBoxContainer = %OptionsContainer
 @onready var skeleton_creator: VBoxContainer = %SkeletonCreator
 @onready var tool_options: VBoxContainer = %ToolOptions
@@ -146,6 +149,7 @@ func _ready() -> void:
 		bone_props.set_visible_children(false)
 		bone_props.call("_ready")
 		bone_props.visible = false
+		adders.visible = bone_props.visible
 
 		utilities_section.set_script(COLLAPSIBLE_CONTAINER)
 		utilities_section.text = "Utilities"
@@ -189,9 +193,10 @@ func _ready() -> void:
 	skeleton_creator.visible = bone_manager.current_frame_bones.is_empty()
 	tool_options.visible = !skeleton_creator.visible
 	if bone_manager.pose_layer:
-		%PoseVisibilityAlert.visible = not bone_manager.pose_layer.get_ancestors().is_empty()
+		pose_visibility_alert.visible = not bone_manager.pose_layer.get_ancestors().is_empty()
 
 	load_config()
+	display_props()
 
 
 # UI "updating" signals
@@ -272,6 +277,12 @@ func save_config() -> void:
 	api.general.get_global().config_cache.set_value(tool_slot.kname, kname, config)
 
 
+func _on_select_pose_layer_pressed() -> void:
+	var project = api.project.current_project
+	api.project.select_cels([[project.current_frame, bone_manager.pose_layer.index]])
+	bone_manager.call("_on_cel_switched")
+
+
 func _on_create_pose_layer_pressed() -> void:
 	var project = api.project.current_project
 	project.current_layer = 0  # Layer above which the PoseLayer should be added
@@ -319,7 +330,7 @@ func _on_pose_layer_changed():
 
 func _on_project_data_changed(_project):
 	if bone_manager.pose_layer:
-		%PoseVisibilityAlert.visible = not bone_manager.pose_layer.get_ancestors().is_empty()
+		pose_visibility_alert.visible = not bone_manager.pose_layer.get_ancestors().is_empty()
 	pose_layer_creator.visible = (bone_manager.pose_layer == null)
 	options_container.visible = !pose_layer_creator.visible
 	skeleton_creator.visible = bone_manager.current_frame_bones.is_empty()
@@ -897,6 +908,11 @@ func get_selected_bone_names(popup: PopupMenu, bone_index: int) -> PackedStringA
 
 
 func display_props():
+	pose_layer_selector.visible = false
+	if bone_manager.pose_layer:
+		var is_pose_l = api.project.current_project.current_layer == bone_manager.pose_layer.index
+		options_container.visible = is_pose_l
+		pose_layer_selector.visible = not is_pose_l
 	if _rot_slider.value_changed.is_connected(_on_rotation_changed):  # works for both signals
 		_rot_slider.value_changed.disconnect(_on_rotation_changed)
 		_pos_slider.value_changed.disconnect(_on_position_changed)
@@ -917,6 +933,7 @@ func display_props():
 	else:
 		bone_props.visible = false
 		%BoneInfo.visible = true
+	adders.visible = bone_props.visible
 
 
 func manage_threading_generate_pose(save_bones_before_render := true):

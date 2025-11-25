@@ -18,7 +18,7 @@ func _enter_tree() -> void:
 		"skeleton",
 		"Skeleton",
 		"res://src/Extensions/Skeletor/Tool/skeleton_tool.tscn",
-		[0],
+		[],
 		"Mouse Left/Right to transform bones \n Ctrl + Mouse Left/Right to displace bones",
 		)
 

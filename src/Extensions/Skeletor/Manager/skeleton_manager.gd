@@ -8,13 +8,21 @@ signal sync_ui  # Used by tools
 var api: Node
 var global: Node
 var active_tool: Control
-var hover_gizmo: SkeletonBone
+var hover_gizmo: SkeletonBone:
+	set(value):
+		if hover_gizmo != value:
+			hover_gizmo = value
+			# NOTE: Case value != null is managed internally by SkeletonBone
+			if !value and !selected_gizmo:
+				queue_redraw()
 var selected_gizmo: SkeletonBone:
 	set(value):
 		if selected_gizmo != value:
 			selected_gizmo = value
 			for tool_node in active_skeleton_tools:
 				tool_node.display_props()
+			if !value:
+				queue_redraw()
 var group_names_ordered: PackedStringArray
 ## A Dictionary of bone names as keys and their "Gizmo" as values.
 var current_frame_bones: Dictionary[String, SkeletonBone]
@@ -95,7 +103,10 @@ func _input(event: InputEvent) -> void:
 		if selected_gizmo and active_tool:
 			# If a tool is actively using a bone then we don't need to calculate hovering
 			return
-		for bone: SkeletonBone in current_frame_bones.values():
+		for bone_idx: int in range(group_names_ordered.size() - 1, -1, -1):
+			var bone: SkeletonBone = current_frame_bones.get(group_names_ordered[bone_idx], null)
+			if !bone:
+				continue
 			if bone.modify_mode != SkeletonBone.NONE and not bone == selected_gizmo:
 				# Bones should only have an active modify_mode if it is the selected bone
 				bone.modify_mode = SkeletonBone.NONE
@@ -135,10 +146,20 @@ func _draw() -> void:
 		return
 	var project = api.project.current_project
 	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
-	if not is_pose_layer(project.layers[project.current_layer]):
-		return
-	for bone_name: String in current_frame_bones:
-		current_frame_bones[bone_name].draw_gizmo(global.camera.zoom, mouse_point, self)
+	var current_layer = project.layers.get(project.current_layer)
+	if not is_pose_layer(current_layer):
+		if current_layer:
+			var parent_group = current_layer
+			if parent_group.get_layer_type() != api.tools.LayerTypes.GROUP:
+				parent_group = current_layer.parent
+			if parent_group:
+				if current_frame_bones.has(parent_group.name):
+					current_frame_bones[parent_group.name].draw_gizmo(
+							global.camera.zoom, mouse_point, self, false
+					)
+	else:
+		for bone_name: String in current_frame_bones:
+			current_frame_bones[bone_name].draw_gizmo(global.camera.zoom, mouse_point, self)
 
 
 ## Data Updaters (Directly responsible for values in current_frame_bones)
@@ -201,11 +222,11 @@ func fix_skeleton_heirarchy(data: Dictionary[String, SkeletonBone]) -> void:
 	group_names_ordered.clear()
 	for layer in project.layers:
 		# Attempt to fix Pose Layer if it isn't present
-		if !pose_layer and layer.get_layer_type() == global.LayerTypes.PIXEL:
+		if !pose_layer and layer.get_layer_type() == api.tools.LayerTypes.PIXEL:
 			if "Pose Layer" in layer.name.capitalize():
 				pose_layer = layer
 		# Find names of all Group layers in order
-		elif layer.get_layer_type() == global.LayerTypes.GROUP:
+		elif layer.get_layer_type() == api.tools.LayerTypes.GROUP:
 			group_names_ordered.insert(0, layer.name)
 			invalid_layer_names.erase(layer.name)  # Layer is a valid Group Layer
 			var layer_parent_name: String = ""
@@ -233,7 +254,7 @@ func fix_skeleton_heirarchy(data: Dictionary[String, SkeletonBone]) -> void:
 		# (if one signal isn't connected, it's likely other signals aren't as well)
 		if not layer.name_changed.is_connected(_on_layer_name_changed):
 			if layer != pose_layer:
-				if layer.get_layer_type() != global.LayerTypes.GROUP:
+				if layer.get_layer_type() != api.tools.LayerTypes.GROUP:
 					layer.visibility_changed.connect(generate_pose)
 				layer.effects_added_removed.connect(generate_pose)
 				layer.name_changed.connect(_on_layer_name_changed.bind(layer, layer.name))
@@ -283,7 +304,7 @@ func generate_pose(for_frame: int = current_frame, save_bones_before_render := t
 			continue
 
 		var include := false if (
-			!layer.visible and layer.get_layer_type() != global.LayerTypes.GROUP
+			!layer.visible and layer.get_layer_type() != api.tools.LayerTypes.GROUP
 		) else true
 		if layer.is_blender():
 			cel_image = layer.blend_children(frame)
@@ -378,7 +399,7 @@ func get_best_origin(layer_idx: int) -> Vector2i:
 	var project = api.project.current_project
 	if current_frame >= 0 and current_frame < project.frames.size():
 		if layer_idx >= 0 and layer_idx < project.layers.size():
-			if project.layers[layer_idx].get_layer_type() == global.LayerTypes.GROUP:
+			if project.layers[layer_idx].get_layer_type() == api.tools.LayerTypes.GROUP:
 				var used_rect := Rect2i()
 				for child_layer in project.layers[layer_idx].get_children(false):
 					if project.frames[current_frame].cels[child_layer.index].get_class_name() == "PixelCel":
@@ -427,7 +448,7 @@ func manage_project_signals(should_connect := false) -> void:
 		for layer in api.project.current_project.layers:
 			if layer != pose_layer:
 				# Treatment for simple layers (all BaseLayers except Group Layers)
-				if layer.get_layer_type() != global.LayerTypes.GROUP:
+				if layer.get_layer_type() != api.tools.LayerTypes.GROUP:
 					if !layer.visibility_changed.is_connected(generate_pose):
 						layer.visibility_changed.connect(generate_pose)
 				# Treatment for group layers
@@ -454,7 +475,7 @@ func manage_project_signals(should_connect := false) -> void:
 		for layer in api.project.current_project.layers:
 			if layer != pose_layer:
 				# Treatment for simple layers (all BaseLayers except Group Layers)
-				if layer.get_layer_type() != global.LayerTypes.GROUP:
+				if layer.get_layer_type() != api.tools.LayerTypes.GROUP:
 					if layer.visibility_changed.is_connected(generate_pose):
 						layer.visibility_changed.disconnect(generate_pose)
 				 # Treatment for group layers
@@ -470,7 +491,7 @@ func manage_project_signals(should_connect := false) -> void:
 func menu_item_clicked() -> void:
 	var project = api.project.current_project
 	var current_layer = project.layers[project.current_layer]
-	if !pose_layer and current_layer.get_layer_type() == global.LayerTypes.PIXEL:
+	if !pose_layer and current_layer.get_layer_type() == api.tools.LayerTypes.PIXEL:
 		pose_layer = current_layer
 		update_frame_data()
 
@@ -516,14 +537,14 @@ func _on_project_layers_moved() -> void:
 func _on_layer_name_changed(layer: RefCounted, old_name: String) -> void:
 	var project: RefCounted = api.project.current_project
 	if (
-		layer.get_layer_type() == global.LayerTypes.PIXEL
+		layer.get_layer_type() == api.tools.LayerTypes.PIXEL
 		and not is_sane(project)
 	):
 		if "Pose Layer" in layer.name.capitalize():
 			pose_layer = layer
 			update_frame_data()
 			return
-	elif layer.get_layer_type() == global.LayerTypes.GROUP:
+	elif layer.get_layer_type() == api.tools.LayerTypes.GROUP:
 		if is_sane(project):
 			if old_name in current_frame_bones.keys():
 				# Disconnect and later re-connect with new "old_name"
@@ -566,15 +587,25 @@ func _on_layer_name_changed(layer: RefCounted, old_name: String) -> void:
 
 func manage_layer_visibility() -> void:
 	var project = api.project.current_project
-	var ancestors = project.layers[project.current_layer].get_ancestors()
+	var current_layer = project.layers[project.current_layer]
+	var ancestors = current_layer.get_ancestors()
 	var pose_layer_visible = (
-		project.current_layer == pose_layer.index
-		or ancestors.is_empty()
+		current_layer == pose_layer
+		or (
+			ancestors.is_empty()
+			and current_layer.get_layer_type() != api.tools.LayerTypes.GROUP
+		)
 	)
 	if pose_layer_visible != pose_layer.visible:
 		pose_layer.visible = pose_layer_visible
 		if not pose_layer.visible:  # Clear gizmos when we leave PoseLayer
 			selected_gizmo = null
+		if current_layer.get_layer_type() == api.tools.LayerTypes.PIXEL:
+			if current_layer == pose_layer:
+				api.tools.autoload().assign_tool("skeleton", MOUSE_BUTTON_LEFT)
+				api.tools.autoload().assign_tool("skeleton", MOUSE_BUTTON_RIGHT)
+			else:
+				api.tools.autoload().assign_tool("Pencil", MOUSE_BUTTON_LEFT)
 		if api.project.current_project.current_layer == pose_layer.index:
 			# generate_pose if we qued it and are now back on PoseLayer
 			if queue_generate and pose_layer.visible:
@@ -583,10 +614,9 @@ func manage_layer_visibility() -> void:
 		# Also change visibility of all the root folders
 		for layer_idx in api.project.current_project.layers.size():
 			var layer = api.project.current_project.layers[layer_idx]
-			if layer.get_layer_type() == global.LayerTypes.GROUP and not layer.parent:
+			if layer.get_layer_type() == api.tools.LayerTypes.GROUP and not layer.parent:
 				api.project.current_project.layers[layer_idx].visible = !pose_layer_visible
-	if pose_layer.visible:
-		queue_redraw()
+	queue_redraw()
 
 
 func assign_pose_layer(layer: RefCounted) -> void:
@@ -595,6 +625,9 @@ func assign_pose_layer(layer: RefCounted) -> void:
 		layer.set("ui_color", Color(0, 1, 0, 0.5))
 		if pose_layer.visibility_changed.is_connected(generate_pose):
 			pose_layer.visibility_changed.disconnect(generate_pose)
+		if api.project.current_project.current_layer == pose_layer.index:
+			api.tools.autoload().assign_tool("skeleton", MOUSE_BUTTON_LEFT)
+			api.tools.autoload().assign_tool("skeleton", MOUSE_BUTTON_RIGHT)
 
 
 ## Saves the current_frame_data to the given frame of project
@@ -776,7 +809,7 @@ func _set_layer_metadata_image(
 	# Store the blend mode
 	image.set_pixel(index, 0, Color(layer.blend_mode / 255.0, 0.0, 0.0, 0.0))
 	# Store the opacity
-	if layer.visible or layer.get_layer_type() == global.LayerTypes.GROUP:
+	if layer.visible or layer.get_layer_type() == api.tools.LayerTypes.GROUP:
 		var opacity = cel.get_final_opacity(layer)
 		image.set_pixel(index, 1, Color(opacity, 0.0, 0.0, 0.0))
 	else:

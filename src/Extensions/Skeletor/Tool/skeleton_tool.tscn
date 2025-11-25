@@ -27,7 +27,7 @@ size_flags_vertical = 3
 [node name="PanelContainer" type="PanelContainer" parent="PoseLayerCreator"]
 layout_mode = 2
 
-[node name="RichTextLabel" type="RichTextLabel" parent="PoseLayerCreator/PanelContainer"]
+[node name="NoPoseWarn" type="RichTextLabel" parent="PoseLayerCreator/PanelContainer"]
 layout_mode = 2
 size_flags_vertical = 3
 bbcode_enabled = true
@@ -40,6 +40,28 @@ horizontal_alignment = 1
 [node name="CreatePoseLayer" type="Button" parent="PoseLayerCreator"]
 layout_mode = 2
 text = "Create one"
+
+[node name="PoseLayerSelector" type="VBoxContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="PanelContainer" type="PanelContainer" parent="PoseLayerSelector"]
+layout_mode = 2
+
+[node name="RichTextLabel" type="RichTextLabel" parent="PoseLayerSelector/PanelContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+text = "[color=green]INFO[/color]
+You are not on Pose Layer. Tool options not displayed"
+fit_content = true
+scroll_active = false
+horizontal_alignment = 1
+
+[node name="SelectPoseLayer" type="Button" parent="PoseLayerSelector"]
+layout_mode = 2
+text = "Select Pose Layer"
 
 [node name="OptionsContainer" type="VBoxContainer" parent="."]
 unique_name_in_owner = true
@@ -80,6 +102,51 @@ text = "[color=red]Alert[/color]
 Pose Layer is inside a Group layer! Pose will not be visible!!"
 fit_content = true
 horizontal_alignment = 1
+
+[node name="Adders" type="HBoxContainer" parent="OptionsContainer/ToolOptions"]
+unique_name_in_owner = true
+layout_mode = 2
+alignment = 2
+
+[node name="AddBone" type="Button" parent="OptionsContainer/ToolOptions/Adders"]
+custom_minimum_size = Vector2(25, 25)
+layout_mode = 2
+tooltip_text = "Add new bone as a child to this bone."
+
+[node name="TextureRect" type="TextureRect" parent="OptionsContainer/ToolOptions/Adders/AddBone"]
+texture_filter = 1
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 3.0
+offset_top = 3.0
+offset_right = -3.0
+offset_bottom = -3.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_kpe34")
+expand_mode = 1
+
+[node name="AddTexture" type="Button" parent="OptionsContainer/ToolOptions/Adders"]
+custom_minimum_size = Vector2(25, 25)
+layout_mode = 2
+tooltip_text = "Add new pixel layer to this bone"
+
+[node name="TextureRect" type="TextureRect" parent="OptionsContainer/ToolOptions/Adders/AddTexture"]
+texture_filter = 1
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 2.0
+offset_top = 2.0
+offset_right = -2.0
+offset_bottom = -2.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_66q0l")
+expand_mode = 1
 
 [node name="Section3" type="HBoxContainer" parent="OptionsContainer/ToolOptions"]
 layout_mode = 2
@@ -146,50 +213,6 @@ layout_mode = 2
 [node name="BoneProps" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection"]
 unique_name_in_owner = true
 layout_mode = 2
-
-[node name="Adders" type="HBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps"]
-layout_mode = 2
-alignment = 2
-
-[node name="AddBone" type="Button" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/Adders"]
-custom_minimum_size = Vector2(25, 25)
-layout_mode = 2
-tooltip_text = "Add new bone as a child to this bone."
-
-[node name="TextureRect" type="TextureRect" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/Adders/AddBone"]
-texture_filter = 1
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 3.0
-offset_top = 3.0
-offset_right = -3.0
-offset_bottom = -3.0
-grow_horizontal = 2
-grow_vertical = 2
-texture = ExtResource("2_kpe34")
-expand_mode = 1
-
-[node name="AddTexture" type="Button" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/Adders"]
-custom_minimum_size = Vector2(25, 25)
-layout_mode = 2
-tooltip_text = "Add new pixel layer to this bone"
-
-[node name="TextureRect" type="TextureRect" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/Adders/AddTexture"]
-texture_filter = 1
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 2.0
-offset_top = 2.0
-offset_right = -2.0
-offset_bottom = -2.0
-grow_horizontal = 2
-grow_vertical = 2
-texture = ExtResource("2_66q0l")
-expand_mode = 1
 
 [node name="RotationAlgorithm" type="OptionButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps"]
 unique_name_in_owner = true
@@ -335,12 +358,13 @@ scroll_active = false
 horizontal_alignment = 1
 
 [connection signal="pressed" from="PoseLayerCreator/CreatePoseLayer" to="." method="_on_create_pose_layer_pressed"]
+[connection signal="pressed" from="PoseLayerSelector/SelectPoseLayer" to="." method="_on_select_pose_layer_pressed"]
 [connection signal="pressed" from="OptionsContainer/SkeletonCreator/CreateBone" to="." method="_on_create_first_bone_pressed"]
+[connection signal="pressed" from="OptionsContainer/ToolOptions/Adders/AddBone" to="." method="_on_add_bone_pressed"]
+[connection signal="pressed" from="OptionsContainer/ToolOptions/Adders/AddTexture" to="." method="_on_add_texture_pressed"]
 [connection signal="toggled" from="OptionsContainer/ToolOptions/GeneralProperties/LiveUpdateCheckbox" to="." method="_on_live_update_pressed"]
 [connection signal="toggled" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/LockPoseCheckbox" to="." method="_on_lock_pose_checkbox_toggled"]
 [connection signal="toggled" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/IncludeChildrenCheckbox" to="." method="_on_include_children_checkbox_toggled"]
-[connection signal="pressed" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/Adders/AddBone" to="." method="_on_add_bone_pressed"]
-[connection signal="pressed" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/Adders/AddTexture" to="." method="_on_add_texture_pressed"]
 [connection signal="item_selected" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/RotationAlgorithm" to="." method="_on_rotation_algorithm_item_selected"]
 [connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/QuickSetBones" to="." method="_on_quick_set_bones_menu_about_to_popup"]
 [connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/CopyPoseFrom" to="." method="_on_copy_pose_from_about_to_popup"]

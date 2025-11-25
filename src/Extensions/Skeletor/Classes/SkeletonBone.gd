@@ -81,6 +81,10 @@ func _init(
 	_bone_set = bone_set
 
 
+func get_interaction_distance(zoom_level: float) -> float:
+	return clampf(InteractionDistance / zoom_level, 0, gizmo_length * 0.2)
+
+
 ## Checks if the bone's parent is a valid part of the skeleton
 func is_bone_parent_valid() -> bool:
 	return parent_bone_name in _bone_set.keys()
@@ -111,8 +115,7 @@ func update_bone_property(property: String, should_propagate: bool, diff) -> voi
 				bone.start_point = bone.rel_to_origin(
 					rel_to_canvas(start_point) + displacement
 				)
-	if is_bone_parent_valid():
-		bone_set_updated.emit()
+	bone_set_updated.emit()
 
 
 func deserialize(data: Dictionary, silent_update := false) -> void:
@@ -162,19 +165,20 @@ func serialize(vector_to_string := true) -> Dictionary:
 func hover_mode(mouse_position: Vector2, camera_zoom) -> int:
 	var local_mouse_pos = rel_to_origin(mouse_position)
 	var hover_type := NONE
+	var interaction_distance := get_interaction_distance(camera_zoom.x)
 	# Mouse close to position circle
-	if (start_point).distance_to(local_mouse_pos) <= InteractionDistance / camera_zoom.x:
+	if (start_point).distance_to(local_mouse_pos) <= interaction_distance:
 		hover_type = DISPLACE
 	elif (
 		(start_point + end_point).distance_to(local_mouse_pos)
-		<= InteractionDistance / camera_zoom.x
+		<= interaction_distance
 	):
 		# Mouse close to end circle
 		if !ignore_rotation_hover:
 			hover_type = EXTEND
 	elif is_close_to_segment(
 		rel_to_start_point(mouse_position),
-		InteractionDistance / camera_zoom.x,
+		interaction_distance,
 		Vector2.ZERO, end_point
 	):
 		# Mouse close joining line
@@ -216,31 +220,68 @@ func rel_to_canvas(pos: Vector2, is_rel_to_start_point := false) -> Vector2:
 
 
 ## Generates a gizmo (for preview). Called by _draw() of manager
-func draw_gizmo(camera_zoom: Vector2, mouse_point: Vector2, manager: BoneManager) -> void:
+func draw_gizmo(
+	camera_zoom: Vector2, mouse_point: Vector2, manager: BoneManager, with_transform := true
+) -> void:
 	var highlight = (self == manager.hover_gizmo or self == manager.selected_gizmo)
-	var width: float = (WIDTH if (highlight) else DESELECT_WIDTH) / camera_zoom.x
-	var net_width = width
-	var bone_color := Color.WHITE if (highlight) else Color.GRAY
-	var true_hover_mode = max(modify_mode, hover_mode(mouse_point, camera_zoom))
-	if true_hover_mode == SkeletonBone.EXTEND:
-		true_hover_mode = SkeletonBone.ROTATE
-	if hover_mode(mouse_point, camera_zoom) == SkeletonBone.NONE:
-		true_hover_mode = SkeletonBone.NONE
+	var primary_color := Color.WHITE
+	var secondary_color := Color(1, 1, 1, 0.8)
+	var highlight_color := primary_color if (highlight) else secondary_color
+
+	# Get the appropriate hover mode
+	var true_hover_mode = SkeletonBone.NONE
+	if highlight:
+		var hover := hover_mode(mouse_point, camera_zoom)
+		true_hover_mode = max(modify_mode, hover)
+		if true_hover_mode == SkeletonBone.EXTEND:
+			true_hover_mode = SkeletonBone.ROTATE
+		if hover == SkeletonBone.NONE:
+			true_hover_mode = SkeletonBone.NONE
+
+	if highlight:
+		var cursor := Input.CURSOR_ARROW
+		match true_hover_mode:
+			SkeletonBone.DISPLACE:
+				cursor = Input.CURSOR_MOVE
+			SkeletonBone.ROTATE:
+				cursor = Input.CURSOR_POINTING_HAND
+			_:
+				cursor = Input.CURSOR_ARROW
+				if manager.global.cross_cursor:
+					cursor = Input.CURSOR_CROSS
+		if DisplayServer.cursor_get_shape() != cursor and highlight:
+			Input.set_default_cursor_shape(cursor)
+
+	var transform_start := start_point
+	var bone_end := end_point
+	if not with_transform:
+		transform_start = Vector2.ZERO
+		bone_end = end_point.rotated(-bone_rotation)
+
+	# Lambdha func to get width
+	var get_width := func(for_hover_mode):
+		var initial_width: float = (WIDTH if (highlight) else DESELECT_WIDTH) / camera_zoom.x
+		var hover_width_diff: float = (
+			initial_width / 2 if (true_hover_mode != SkeletonBone.NONE) else 0.0
+		)
+		var net_width := (
+			initial_width + hover_width_diff
+			if true_hover_mode == for_hover_mode or self == manager.selected_gizmo
+			else SkeletonBone.DESELECT_WIDTH / camera_zoom.x
+		)
+		return net_width
 
 	# Draw the position circle
 	manager.draw_set_transform(gizmo_origin)
-	net_width = width + (width / 2 if (true_hover_mode == SkeletonBone.DISPLACE) else 0.0)
+	# Joint circle at start
 	manager.draw_circle(
-		start_point,
+		transform_start,
 		START_RADIUS / camera_zoom.x,
-		bone_color,
+		highlight_color,
 		false,
-		(
-			net_width
-			if (true_hover_mode == SkeletonBone.DISPLACE)
-			else SkeletonBone.DESELECT_WIDTH / camera_zoom.x
-		)
+		get_width.call(SkeletonBone.DISPLACE)
 	)
+
 	manager.draw_set_transform(Vector2.ZERO)
 	ignore_rotation_hover = manager.bones_chained
 	var skip_rotation_gizmo := false
@@ -253,59 +294,71 @@ func draw_gizmo(camera_zoom: Vector2, mouse_point: Vector2, manager: BoneManager
 				break
 	ignore_rotation_hover = skip_rotation_gizmo
 	if !skip_rotation_gizmo:
-		net_width = width + (width / 2 if (true_hover_mode == SkeletonBone.ROTATE) else 0.0)
 		manager.draw_set_transform(gizmo_origin)
-		# Draw the line joining the position and rotation circles
-		manager.draw_line(
-			start_point,
-			start_point + end_point,
-			bone_color,
-			(
-				net_width
-				if (true_hover_mode == SkeletonBone.ROTATE)
-				else SkeletonBone.DESELECT_WIDTH / camera_zoom.x
+		if with_transform:
+			# Increase width slightly in order to indicate highlight
+			# Draw the line joining the start and end points
+			var split := 0.1 * bone_end
+			var perp := bone_end.normalized().rotated(-(PI / 2))
+			var w1 := START_RADIUS / camera_zoom.x   # start thickness
+			var w2 := END_RADIUS / camera_zoom.x   # end thickness
+			var start := transform_start + (bone_end.normalized() * w1)
+			var end := transform_start + end_point  - (bone_end.normalized() * w2)
+			var p1 := start + split + perp * get_interaction_distance(camera_zoom.x)
+			var p2 := end + (perp / 2) * w2
+			var p3 := end - (perp / 2) * w2
+			var p4 := start + split - perp * get_interaction_distance(camera_zoom.x)
+			manager.draw_polyline(
+				PackedVector2Array([start, p1, p2, p3, p4, start, end]),
+				highlight_color,
+				get_width.call(SkeletonBone.ROTATE)
 			)
-		)
+		else:
+			# Draw the line joining the position and rotation circles
+			manager.draw_line(
+				transform_start,
+				transform_start + bone_end,
+				highlight_color,
+				get_width.call(SkeletonBone.ROTATE)
+			)
 		# Draw rotation circle (pose mode)
 		manager.draw_circle(
-			start_point + end_point,
+			transform_start + bone_end,
 			SkeletonBone.END_RADIUS / camera_zoom.x,
-			bone_color,
+			highlight_color,
 			false,
-			(
-				net_width
-				if (true_hover_mode == SkeletonBone.ROTATE)
-				else SkeletonBone.DESELECT_WIDTH / camera_zoom.x
-			)
+			get_width.call(SkeletonBone.ROTATE)
 		)
 	manager.draw_set_transform(Vector2.ZERO)
-	## Show connection to parent
-	var parent: SkeletonBone = _bone_set.get(parent_bone_name, null)
-	if parent:
-		var p_start := parent.start_point
-		var p_end := Vector2.ZERO if manager.bones_chained else parent.end_point
-		var parent_start = (
-			rel_to_origin(parent.rel_to_canvas(p_start)) + p_end
-		)
-		manager.draw_set_transform(gizmo_origin)
-		# NOTE: start_point is coordinate of tail of bone, parent_start is head of parent
-		# (or tail in chained mode)
-		manager.draw_dashed_line(
-			start_point,
-			parent_start,
-			bone_color,
-			SkeletonBone.DESELECT_WIDTH / camera_zoom.x
-		)
-		manager.draw_set_transform(Vector2.ZERO)
-	var font = manager.get_node_or_null("/root/Themes").get_font()
-	var line_size = gizmo_length
-	var fade_ratio = (line_size * camera_zoom.x) / (font.get_string_size(bone_name).x)
-	if manager.bones_chained:
-		fade_ratio = max(0.3, fade_ratio)
-	if fade_ratio >= 0.4 and !manager.active_tool:  # Hide names if we have zoomed far
-		manager.draw_set_transform(
-			gizmo_origin + start_point, manager.rotation, Vector2.ONE / camera_zoom.x
-		)
-		manager.draw_string(
-			font, Vector2(3, -3), bone_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, bone_color
-		)
+	if with_transform:
+		## Show connection to parent and write bone name
+		var parent: SkeletonBone = _bone_set.get(parent_bone_name, null)
+		if parent:
+			var p_start := parent.start_point
+			var p_end := Vector2.ZERO if manager.bones_chained else parent.end_point
+			var parent_start = (
+				rel_to_origin(parent.rel_to_canvas(p_start)) + p_end
+			)
+			manager.draw_set_transform(gizmo_origin)
+			# NOTE: start_point is coordinate of tail of bone, parent_start is head of parent
+			# (or tail in chained mode)
+			manager.draw_dashed_line(
+				start_point,
+				parent_start,
+				highlight_color,
+				SkeletonBone.DESELECT_WIDTH / camera_zoom.x
+			)
+			manager.draw_set_transform(Vector2.ZERO)
+
+		var font = manager.get_node_or_null("/root/Themes").get_font()
+		var line_size = gizmo_length
+		var fade_ratio = (line_size * camera_zoom.x) / (font.get_string_size(bone_name).x)
+		if manager.bones_chained:
+			fade_ratio = max(0.3, fade_ratio)
+		if fade_ratio >= 0.4 and !manager.active_tool:  # Hide names if we have zoomed far
+			manager.draw_set_transform(
+				gizmo_origin + start_point, manager.rotation, Vector2.ONE / camera_zoom.x
+			)
+			manager.draw_string(
+				font, Vector2(3, -3), bone_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, highlight_color
+			)
