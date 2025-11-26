@@ -34,6 +34,7 @@ var prev_frame_count: int = 0
 var assign_pose_button_id: int
 var queue_generate_frames: PackedInt32Array
 var queue_conflict_check := false
+var ignore_gen_n_times: int = 0
 # The shader is located in pixelorama
 var blend_layer_shader = load("res://src/Shaders/BlendLayers.gdshader")
 var pose_layer:  ## The layer in which a pose is rendered
@@ -280,6 +281,9 @@ func generate_pose(for_frame: int = current_frame, save_bones_before_render := t
 		return
 	if save_bones_before_render:
 		save_frame_info(project)
+	if ignore_gen_n_times > 0:
+		ignore_gen_n_times -= 1
+		return
 	manage_ui_signals(true)  # Trmporarily disconnect UI signals to prevent undesired effects
 	var image = Image.create_empty(project.size.x, project.size.y, false, Image.FORMAT_RGBA8)
 	if current_frame_bones.is_empty():  # No pose to generate (This is a kind of failsafe)

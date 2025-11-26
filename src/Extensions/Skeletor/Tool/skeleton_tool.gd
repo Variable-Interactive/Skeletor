@@ -654,6 +654,7 @@ func _on_add_bone_pressed() -> void:
 					)
 					# User likely wants it disabled here
 					_lock_pose = true
+					bone_manager.ignore_gen_n_times = 3
 					update_config()
 					save_config()
 					var l_index = 0 if !bone_manager.pose_layer else bone_manager.pose_layer.index
