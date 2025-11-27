@@ -32,7 +32,7 @@ var current_frame: int = -1
 var prev_layer_count: int = 0
 var prev_frame_count: int = 0
 var assign_pose_button_id: int
-var queue_generate_frames: PackedInt32Array
+var _queue_generate_frames: PackedInt32Array
 var queue_conflict_check := false
 var ignore_gen_n_times: int = 0
 # The shader is located in pixelorama
@@ -287,17 +287,17 @@ func _on_pixel_layer_visiblity_changed(layer):
 
 
 func add_to_generation_queue(frame_idx: int, layer_idx: int = -1, frames_array = []):
-	if not queue_generate_frames.has(frame_idx):
-		queue_generate_frames.append(frame_idx)
-	var cel: RefCounted = frames_array[frame_idx].cels[layer_idx]
+	if not _queue_generate_frames.has(frame_idx):
+		_queue_generate_frames.append(frame_idx)
 	if not frames_array.is_empty() and layer_idx != -1:
+		var cel: RefCounted = frames_array[frame_idx].cels[layer_idx]
 		if cel.link_set:
 			var cels = cel.link_set.get("cels", [])
 			for i in frames_array.size():
 				var check_cel: RefCounted = frames_array[i].cels[layer_idx]
 				if cels.has(check_cel):
-					if not queue_generate_frames.has(i):
-						queue_generate_frames.append(i)
+					if not _queue_generate_frames.has(i):
+						_queue_generate_frames.append(i)
 
 
 func generate_pose(for_frame: int = current_frame, save_bones_before_render := true) -> void:
@@ -315,7 +315,7 @@ func generate_pose(for_frame: int = current_frame, save_bones_before_render := t
 		return
 	if pose_layer.locked != true:
 		pose_layer.locked = true
-	queue_generate_frames.erase(for_frame)
+	_queue_generate_frames.erase(for_frame)
 	manage_ui_signals(true)  # Trmporarily disconnect UI signals to prevent undesired effects
 	var image = Image.create_empty(project.size.x, project.size.y, false, Image.FORMAT_RGBA8)
 	if current_frame_bones.is_empty():  # No pose to generate (This is a kind of failsafe)
@@ -556,7 +556,7 @@ func _on_cel_switched() -> void:
 
 	# generate_pose if we qued it and are now back on PoseLayer
 	if api.project.current_project.current_layer == pose_layer.index and pose_layer.visible:
-		if queue_generate_frames.has(api.project.current_project.current_frame):
+		if _queue_generate_frames.has(api.project.current_project.current_frame):
 			generate_pose(api.project.current_project.current_frame)
 
 

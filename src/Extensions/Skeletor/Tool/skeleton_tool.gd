@@ -504,6 +504,8 @@ func draw_move(_pos: Vector2i) -> void:
 		return
 	if !bone_manager.selected_gizmo:  # If no bone is selected then do not proceed further
 		return
+	if Input.is_action_pressed(&"pan"):  # If we are panning then do not proceed further
+		return
 
 	# Checks if user intends of transform bone or just move the gizmo only
 	var is_transforming = not (Input.is_key_pressed(KEY_CTRL) or _lock_pose)
@@ -763,7 +765,8 @@ func tween_skeleton_data(bone_id: int, from_frame: int, popup: PopupMenu, curren
 								)
 							)
 			bone_manager.save_frame_info(project, frame_bones, frame_idx)
-			bone_manager.generate_pose(frame_idx)
+			bone_manager.add_to_generation_queue(frame_idx)
+		bone_manager.generate_pose()
 		copy_pose_from.get_popup().hide()
 		copy_pose_from.get_popup().clear(true)  # To save Memory
 
@@ -954,7 +957,9 @@ func manage_threading_generate_pose(save_bones_before_render := true):
 	if not is_transforming:
 		return
 	if ProjectSettings.get_setting("rendering/driver/threads/thread_model") != 2:
-		bone_manager.generate_pose(bone_manager.current_frame, save_bones_before_render)
+		bone_manager.call_deferred(
+			"generate_pose", bone_manager.current_frame, save_bones_before_render
+		)
 	else:  # Multi-threaded mode (Currently pixelorama is single threaded)
 		if not live_thread.is_started():
 			var error := live_thread.start(
