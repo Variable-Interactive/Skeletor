@@ -270,12 +270,34 @@ func fix_skeleton_heirarchy(data: Dictionary[String, SkeletonBone]) -> void:
 		if not layer.name_changed.is_connected(_on_layer_name_changed):
 			if layer != pose_layer:
 				if layer.get_layer_type() != api.tools.LayerTypes.GROUP:
-					layer.visibility_changed.connect(generate_pose)
-				layer.effects_added_removed.connect(generate_pose)
+					layer.visibility_changed.connect(_on_pixel_layer_visiblity_changed.bind(layer))
 				layer.name_changed.connect(_on_layer_name_changed.bind(layer, layer.name))
 	for layer_name in invalid_layer_names:
 		data.erase(layer_name)
 	queue_conflict_check = false
+
+
+func _on_pixel_layer_visiblity_changed(layer):
+	if layer == pose_layer:
+		return
+	var project: RefCounted = api.project.current_project
+	for frame_idx in project.frames.size():
+		add_to_generation_queue(frame_idx)
+	generate_pose()
+
+
+func add_to_generation_queue(frame_idx: int, layer_idx: int = -1, frames_array = []):
+	if not queue_generate_frames.has(frame_idx):
+		queue_generate_frames.append(frame_idx)
+	var cel: RefCounted = frames_array[frame_idx].cels[layer_idx]
+	if not frames_array.is_empty() and layer_idx != -1:
+		if cel.link_set:
+			var cels = cel.link_set.get("cels", [])
+			for i in frames_array.size():
+				var check_cel: RefCounted = frames_array[i].cels[layer_idx]
+				if cels.has(check_cel):
+					if not queue_generate_frames.has(i):
+						queue_generate_frames.append(i)
 
 
 func generate_pose(for_frame: int = current_frame, save_bones_before_render := true) -> void:
@@ -293,6 +315,7 @@ func generate_pose(for_frame: int = current_frame, save_bones_before_render := t
 		return
 	if pose_layer.locked != true:
 		pose_layer.locked = true
+	queue_generate_frames.erase(for_frame)
 	manage_ui_signals(true)  # Trmporarily disconnect UI signals to prevent undesired effects
 	var image = Image.create_empty(project.size.x, project.size.y, false, Image.FORMAT_RGBA8)
 	if current_frame_bones.is_empty():  # No pose to generate (This is a kind of failsafe)
@@ -303,46 +326,47 @@ func generate_pose(for_frame: int = current_frame, save_bones_before_render := t
 	# Start generating
 	# (Group visibility is completely ignored while the visibility of other layer types is respected)
 	var frame = project.frames[for_frame]
+	# Create a copy of old project.ordered_layers to avoid unintentionally modifying it
 	var previous_ordered_layers: Array[int] = project.ordered_layers
+	# get a sorted list of rendering order for layers (Accounts for z index. Includes Group Layers)
+	# bottom most layer at the start, top most at the end.
 	project.order_layers(for_frame)
 	var textures: Array[Image] = []
-	# Nx4 texture, where N is the number of layers and the first row are the blend modes,
-	# the second are the opacities, the third are the origins and the fourth are the
-	# clipping mask booleans.
+	# metadata_image is an Nx4 texture, where N is the number of layers and the first row
+	# are the blend modes, the second are the opacities, the third are the origins and the
+	# fourth are the clipping mask booleans.
 	var metadata_image := Image.create_empty(project.layers.size(), 4, false, Image.FORMAT_R8)
-	for i in project.layers.size():
+	for i in project.ordered_layers.size():
 		var ordered_index = project.ordered_layers[i]
-		var layer = project.layers[ordered_index]
-		var group_layer = layer.parent
-		# Ignore visibility for group layers
-		var cel = frame.cels[ordered_index]
-		var cel_image: Image
-		if layer == pose_layer or not is_instance_valid(group_layer):
+		var layer = project.layers[ordered_index]  # Get the layer
+		var cel = frame.cels[ordered_index] # Get the cel on that layer for the given frame
+		var group_layer = layer.parent  # Get it's parent Group layer
+		if (
+			layer == pose_layer
+			or not is_instance_valid(group_layer)
+			or layer.get_layer_type() == api.tools.LayerTypes.GROUP
+		):
+			# Skip rendering of pose layers (or if a group layer is invalid).
+			# We also don't realy have a way to make bones work with a blend mode that is not
+			# PASSTHROUGH, so skip them as well (we will later force them as PASSTHROUGH).
+			# Move on to the next (upper) layer.
+			textures.append(project.new_empty_image())
 			_set_layer_metadata_image(layer, cel, metadata_image, ordered_index, false)
 			continue
+		# NOTE: the code below only exeecutes for Non-Group layers
+		# Only incude layers if they're visible.
+		var include := true if layer.visible else false
+		var cel_image: Image = layer.display_effects(cel)
 
-		var include := false if (
-			!layer.visible and layer.get_layer_type() != api.tools.LayerTypes.GROUP
-		) else true
-		if layer.is_blender():
-			cel_image = layer.blend_children(frame)
-		else:
-			cel_image = layer.display_effects(cel)
-
+		# Apply transformations to the image if it's a child of group layer
 		if is_instance_valid(group_layer):
 			var bone_set = current_frame_bones
 			if for_frame != current_frame:
 				bone_set = load_frame_bones(project, for_frame)
 			var bone: SkeletonBone = bone_set.get(group_layer.name, null)
-			if !bone:
-				continue
-			_apply_bone(bone, cel_image)
-
+			if bone:
+				_apply_bone(bone, cel_image)
 		textures.append(cel_image)
-		if (
-			layer.is_blended_by_ancestor()
-		):
-			include = false
 		_set_layer_metadata_image(layer, cel, metadata_image, ordered_index, include)
 
 	var texture_array := Texture2DArray.new()
@@ -465,12 +489,13 @@ func manage_project_signals(should_connect := false) -> void:
 			if layer != pose_layer:
 				# Treatment for simple layers (all BaseLayers except Group Layers)
 				if layer.get_layer_type() != api.tools.LayerTypes.GROUP:
-					if !layer.visibility_changed.is_connected(generate_pose):
-						layer.visibility_changed.connect(generate_pose)
+					if !layer.visibility_changed.is_connected(_on_pixel_layer_visiblity_changed):
+						layer.visibility_changed.connect(
+							_on_pixel_layer_visiblity_changed.bind(layer)
+						)
 				# Treatment for group layers
 				if !layer.name_changed.is_connected(_on_layer_name_changed):
 					layer.name_changed.connect(_on_layer_name_changed.bind(layer, layer.name))
-					layer.effects_added_removed.connect(generate_pose)
 		# Wait two frames for the project to adjust
 		await get_tree().process_frame
 		await get_tree().process_frame
@@ -492,12 +517,11 @@ func manage_project_signals(should_connect := false) -> void:
 			if layer != pose_layer:
 				# Treatment for simple layers (all BaseLayers except Group Layers)
 				if layer.get_layer_type() != api.tools.LayerTypes.GROUP:
-					if layer.visibility_changed.is_connected(generate_pose):
-						layer.visibility_changed.disconnect(generate_pose)
+					if layer.visibility_changed.is_connected(_on_pixel_layer_visiblity_changed):
+						layer.visibility_changed.disconnect(_on_pixel_layer_visiblity_changed)
 				 # Treatment for group layers
 				if layer.name_changed.is_connected(_on_layer_name_changed):
 					layer.name_changed.disconnect(_on_layer_name_changed)
-					layer.effects_added_removed.disconnect(generate_pose)
 
 
 ## Signal recievers
@@ -517,30 +541,40 @@ func _on_pixel_layers_texture_changed() -> void:
 		api.project.current_project.layers[api.project.current_project.current_layer]
 	):
 		for cels in api.project.current_project.selected_cels:
-			if not cels[0] in queue_generate_frames:
-				queue_generate_frames.append(cels[0])
+			add_to_generation_queue(cels[0], cels[1], api.project.current_project.frames)
 
 
 func _on_cel_switched() -> void:
 	if current_frame_bones.is_empty():
 		# Needs a render for the first time
 		for cels in api.project.current_project.selected_cels:
-			if not cels[0] in queue_generate_frames:
-				queue_generate_frames.append(cels[0])
+			add_to_generation_queue(cels[0], cels[1], api.project.current_project.frames)
 	update_frame_data()
 	if !is_sane(api.project.current_project):  ## Do nothing more if pose layer doesn't exist
 		return
 	manage_layer_visibility()
 
+	# generate_pose if we qued it and are now back on PoseLayer
+	if api.project.current_project.current_layer == pose_layer.index and pose_layer.visible:
+		if queue_generate_frames.has(api.project.current_project.current_frame):
+			generate_pose(api.project.current_project.current_frame)
+
 
 func _on_project_data_changed(project: RefCounted) -> void:
 	if project == api.project.current_project:
-		if (
-			project.frames.size() != prev_frame_count
-			or project.layers.size() != prev_layer_count
-		):
+		if project.frames.size() != prev_frame_count or project.layers.size() != prev_layer_count:
+			# just a Failsafe (Never gets called)
 			update_frame_data()
 			generate_pose()
+		else:
+			# Code always chooses this (Used to set things otherwise hard to do)
+			var undo_redo: UndoRedo = project.undo_redo
+			if undo_redo.get_history_count() > 0:
+				var action_name := undo_redo.get_action_name(undo_redo.get_history_count() - 1)
+				if ["Scale", "Set Blend Mode", "Add layer effect"].has(action_name):
+					for frame_idx in project.frames.size():
+						add_to_generation_queue(frame_idx)
+					generate_pose()
 
 
 func _on_project_layers_moved() -> void:
@@ -552,8 +586,7 @@ func _on_project_layers_moved() -> void:
 			generate_pose()
 		else:
 			for cels in api.project.current_project.selected_cels:
-				if not cels[0] in queue_generate_frames:
-					queue_generate_frames.append(cels[0])
+				add_to_generation_queue(cels[0], cels[1], api.project.current_project.frames)
 
 
 func _on_layer_name_changed(layer: RefCounted, old_name: String) -> void:
@@ -628,12 +661,6 @@ func manage_layer_visibility() -> void:
 				api.tools.autoload().assign_tool("skeleton", MOUSE_BUTTON_RIGHT)
 			else:
 				api.tools.autoload().assign_tool("Pencil", MOUSE_BUTTON_LEFT)
-		if api.project.current_project.current_layer == pose_layer.index:
-			# generate_pose if we qued it and are now back on PoseLayer
-			if not queue_generate_frames.is_empty() and pose_layer.visible:
-				for frame_idx in queue_generate_frames:
-					generate_pose(frame_idx)
-				queue_generate_frames.clear()
 		# Also change visibility of all the root folders
 		for layer_idx in api.project.current_project.layers.size():
 			var layer = api.project.current_project.layers[layer_idx]
@@ -826,6 +853,10 @@ func _apply_bone(bone: SkeletonBone, cel_image: Image) -> void:
 	)
 
 
+## [param image] is an Nx4 texture, where N is the number of layers and the first row
+## are the blend modes, the second are the opacities, the third are the origins and the
+## fourth are the clipping mask booleans. if [param include] is false, the image will still
+## store metadata, but it will also mark the image as intended to be used by another (Group) layer.
 func _set_layer_metadata_image(
 	layer: RefCounted, cel: RefCounted, image: Image, index: int, include := true
 ) -> void:
