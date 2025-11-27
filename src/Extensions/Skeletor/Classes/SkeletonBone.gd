@@ -71,6 +71,8 @@ var modify_mode: int = SkeletonBone.NONE:
 var ignore_rotation_hover := false
 var should_update_silently := false
 var _bone_set: Dictionary[String, SkeletonBone]  # Influence of the bone
+
+# Performance variables
 var _old_hover := NONE
 
 
@@ -101,18 +103,20 @@ func update_bone_property(property: String, should_propagate: bool, diff) -> voi
 	if !should_propagate:
 		bone_set_updated.emit()
 		return
-	for bone: SkeletonBone in _bone_set.values():  ## update first child (This will trigger a chain process)
-		if bone.parent_bone_name == bone_name:
-			bone.set(property, bone.get(property) + diff)
+	## update first child (This will trigger a chain process)
+	for child_bone: SkeletonBone in _bone_set.values():
+		if child_bone.parent_bone_name == bone_name:
+			# Change child's properties
+			child_bone.set(property, child_bone.get(property) + diff)
 			if property == "transformation_algorithm":
-				bone.transformation_algorithm = diff
+				child_bone.transformation_algorithm = diff
 				continue
 			if _bone_set.has(bone_name) and property == "bone_rotation":
 				var displacement := rel_to_start_point(
-					bone.rel_to_canvas(bone.start_point)
+					child_bone.rel_to_canvas(child_bone.start_point)
 				)
 				displacement = displacement.rotated(diff)
-				bone.start_point = bone.rel_to_origin(
+				child_bone.start_point = child_bone.rel_to_origin(
 					rel_to_canvas(start_point) + displacement
 				)
 	bone_set_updated.emit()
@@ -184,6 +188,8 @@ func hover_mode(mouse_position: Vector2, camera_zoom) -> int:
 		# Mouse close joining line
 		if !ignore_rotation_hover:
 			hover_type = ROTATE
+	if gizmo_length * camera_zoom.x < 10 and hover_type != NONE:  # we zoomed out too much
+		hover_type = DISPLACE
 	if _old_hover != hover_type:
 		bone_set_updated.emit()
 	return hover_type

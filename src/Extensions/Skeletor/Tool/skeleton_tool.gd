@@ -458,6 +458,8 @@ func _on_ik_error_margin_value_changed(value: float) -> void:
 ## Triggered when the tool is exiting (pixelorama closing, tool changing, extension disabling).
 ## Used to reverse stuff done in _ready or _enter_tree methods
 func _exit_tree() -> void:
+	if live_thread.is_started():
+		live_thread.wait_to_finish()
 	if bone_manager:  # Let the manager know this tool is no longer present
 		bone_manager.active_skeleton_tools.erase(self)
 		bone_manager.queue_redraw()
@@ -509,8 +511,6 @@ func draw_move(_pos: Vector2i) -> void:
 	var mouse_point: Vector2 = api.general.get_canvas().current_pixel
 	# Mouse offset between this frame and previous frame
 	var offset := mouse_point - _prev_mouse_position
-	# Determines if our movement this time waranted a new render
-	var ignore_render_this_frame := false
 
 	# If user wants to transform, has chaining enabled and the bone has a valid parent.
 	if (
@@ -566,7 +566,6 @@ func draw_move(_pos: Vector2i) -> void:
 					_chained_gizmo.modify_mode = SkeletonBone.NONE
 	if bone_manager.selected_gizmo.modify_mode == SkeletonBone.DISPLACE:
 		if not is_transforming:
-			ignore_render_this_frame = true
 			# Pause chain propagation for the start_point property that will be changed after this
 			bone_manager.selected_gizmo.should_update_silently = true
 			bone_manager.selected_gizmo.gizmo_origin += offset.rotated(
@@ -588,7 +587,6 @@ func draw_move(_pos: Vector2i) -> void:
 		).normalized()
 		var diff := localized_mouse_norm.angle_to(localized_prev_mouse_norm)
 		if not is_transforming:
-			ignore_render_this_frame = true
 			bone_manager.selected_gizmo.gizmo_rotate_origin -= diff
 			if bone_manager.selected_gizmo.modify_mode == SkeletonBone.EXTEND:
 				bone_manager.selected_gizmo.gizmo_length = int(
@@ -598,7 +596,7 @@ func draw_move(_pos: Vector2i) -> void:
 			bone_manager.selected_gizmo.bone_rotation -= diff
 			if _allow_chaining and _chained_gizmo:
 				_chained_gizmo.bone_rotation += diff
-	if _live_update and not ignore_render_this_frame:
+	if _live_update:
 		manage_threading_generate_pose(false)
 	_prev_mouse_position = mouse_point
 	display_props()
@@ -951,17 +949,24 @@ func display_props():
 
 
 func manage_threading_generate_pose(save_bones_before_render := true):
+	# Determines if our movement this time waranted a new render
+	var is_transforming = not (Input.is_key_pressed(KEY_CTRL) or _lock_pose)
+	if not is_transforming:
+		return
 	if ProjectSettings.get_setting("rendering/driver/threads/thread_model") != 2:
 		bone_manager.generate_pose(bone_manager.current_frame, save_bones_before_render)
 	else:  # Multi-threaded mode (Currently pixelorama is single threaded)
-		if not live_thread.is_alive():
+		if not live_thread.is_started():
 			var error := live_thread.start(
-				bone_manager.generate_pose.bind(
-					bone_manager.current_frame, save_bones_before_render
-				)
+				bone_manager.call_deferred.bind(
+					"generate_pose", bone_manager.current_frame, save_bones_before_render
+				),
+				Thread.PRIORITY_LOW
 			)
 			if error != OK:  # Thread failed, so do this the hard way.
 				bone_manager.generate_pose(bone_manager.current_frame, save_bones_before_render)
+		if not live_thread.is_alive():
+			live_thread.wait_to_finish()
 
 
 ## Placeholder functions that are a necessity to be here

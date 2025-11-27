@@ -80,13 +80,14 @@ func _exit_tree() -> void:
 
 
 func _input(event: InputEvent) -> void:
-	cursor_reset_delay = clampi(cursor_reset_delay - 1, 0, cursor_reset_delay)
 	if cursor_reset_delay == 0:  # Done to avoid cursor flickering
 		var cursor = Input.CURSOR_ARROW
 		if global.cross_cursor:
 			cursor = Input.CURSOR_CROSS
 		if DisplayServer.cursor_get_shape() != cursor:
 			Input.set_default_cursor_shape(cursor)
+	else:
+		cursor_reset_delay = clampi(cursor_reset_delay - 1, 0, cursor_reset_delay)
 	var project = api.project.current_project
 	if not pose_layer:
 		return
@@ -94,51 +95,57 @@ func _input(event: InputEvent) -> void:
 		project.layers[pose_layer.index].locked = true
 
 	## This manages the hovering mechanism of gizmo
-	if (
-		not is_pose_layer(project.layers[project.current_layer])
-		or active_skeleton_tools.is_empty()
-	):
-		return
-	var pos = global.canvas.current_pixel
-	if hover_gizmo:  # Check if we are still hovering over the same gizmo
-		# Clear the hover_gizmo if it's not being hovered or interacted with
+	if event is InputEventMouseMotion:
 		if (
-			hover_gizmo.hover_mode(pos, global.camera.zoom) == SkeletonBone.NONE
-			and hover_gizmo.modify_mode == SkeletonBone.NONE
+			not is_pose_layer(project.layers[project.current_layer])
+			or active_skeleton_tools.is_empty()
 		):
-			hover_gizmo = null
-	if !hover_gizmo:  # If in the prevoius check we deselected the gizmo then search for a new one.
-		if selected_gizmo and active_tool:
-			# If a tool is actively using a bone then we don't need to calculate hovering
 			return
-		for bone_idx: int in range(group_names_ordered.size() - 1, -1, -1):
-			var bone: SkeletonBone = current_frame_bones.get(group_names_ordered[bone_idx], null)
-			if !bone:
-				continue
-			if bone.modify_mode != SkeletonBone.NONE and not bone == selected_gizmo:
-				# Bones should only have an active modify_mode if it is the selected bone
-				bone.modify_mode = SkeletonBone.NONE
-			# Select the bone if it's being hovered or modified
+		var pos = global.canvas.current_pixel
+		var exclude_bones := []
+		if hover_gizmo:  # Check if we are still hovering over the same gizmo
+			# Clear the hover_gizmo if it's not being hovered or interacted with
 			if (
-				bone.hover_mode(pos, global.camera.zoom) != SkeletonBone.NONE
+				hover_gizmo.hover_mode(pos, global.camera.zoom) == SkeletonBone.NONE
+				and hover_gizmo.modify_mode == SkeletonBone.NONE
 			):
-				var skip_gizmo := false
-				if (
-					bones_chained
-					and (
-						bone.hover_mode(pos, global.camera.zoom) == SkeletonBone.ROTATE
-					)
-				):
-					# In chaining mode, we only allow rotation (through gizmo) if it is
-					# the last bone in the chain. Ignore bone if it is a parent of another bone
-					for another_bone in current_frame_bones.values():
-						if another_bone.parent_bone_name == bone.bone_name:
-							skip_gizmo = true
-							break
-				if skip_gizmo:
+				exclude_bones.append(hover_gizmo)
+				hover_gizmo = null
+		if !hover_gizmo:
+			# If in the prevoius check we deselected the gizmo then search for a new one.
+			if selected_gizmo:
+				if active_tool:
+					# If a tool is actively using a bone then we don't need to calculate hovering
+					hover_gizmo = selected_gizmo
+					return
+				# We are just checking it as higher priorty, we don't have to clear it
+				if selected_gizmo.hover_mode(pos, global.camera.zoom) != SkeletonBone.NONE:
+					hover_gizmo = selected_gizmo
+					return
+			for bone_idx: int in range(group_names_ordered.size() - 1, -1, -1):
+				var bone: SkeletonBone = current_frame_bones.get(
+					group_names_ordered[bone_idx], null
+				)
+				if !bone or exclude_bones.has(bone):
 					continue
-				hover_gizmo = bone
-				break
+				if bone.modify_mode != SkeletonBone.NONE and not bone == selected_gizmo:
+					# Failsafe: Bones should only have an active modify_mode if it is selected.
+					bone.modify_mode = SkeletonBone.NONE
+				# Select the bone if it's being hovered or modified
+				var hover_mode := bone.hover_mode(pos, global.camera.zoom)
+				if hover_mode != SkeletonBone.NONE:
+					var skip_gizmo := false
+					if bones_chained and hover_mode == SkeletonBone.ROTATE:
+						# In chaining mode, we only allow rotation (through gizmo) if it is
+						# the last bone in the chain. Ignore bone if it is a parent of another bone
+						for another_bone in current_frame_bones.values():
+							if another_bone.parent_bone_name == bone.bone_name:
+								skip_gizmo = true
+								break
+					if skip_gizmo:
+						continue
+					hover_gizmo = bone
+					break
 
 	if (
 		event.is_action_pressed(&"activate_left_tool")
@@ -284,12 +291,12 @@ func generate_pose(for_frame: int = current_frame, save_bones_before_render := t
 	if ignore_gen_n_times > 0:
 		ignore_gen_n_times -= 1
 		return
+	if pose_layer.locked != true:
+		pose_layer.locked = true
 	manage_ui_signals(true)  # Trmporarily disconnect UI signals to prevent undesired effects
 	var image = Image.create_empty(project.size.x, project.size.y, false, Image.FORMAT_RGBA8)
 	if current_frame_bones.is_empty():  # No pose to generate (This is a kind of failsafe)
-		project.layers[pose_layer.index].locked = false
 		_render_image(image)
-		project.layers[pose_layer.index].locked = true
 		manage_ui_signals()  # Reconnect signals
 		return
 
@@ -352,9 +359,7 @@ func generate_pose(for_frame: int = current_frame, save_bones_before_render := t
 	image.blend_rect(blended, Rect2i(Vector2.ZERO, project.size), Vector2.ZERO)
 	# Re-order the layers again to ensure correct canvas drawing
 	project.ordered_layers = previous_ordered_layers
-	project.layers[pose_layer.index].locked = false
 	_render_image(image, for_frame)
-	project.layers[pose_layer.index].locked = true
 	manage_ui_signals()  # Reconnect signals
 
 
@@ -852,6 +857,5 @@ func _render_image(image: Image, at_frame: int = current_frame) -> void:
 		return
 	cel_image.blit_rect(image, Rect2i(Vector2.ZERO, image.get_size()), Vector2.ZERO)
 	pixel_cel.image_changed(cel_image)
-	if at_frame == current_frame and pose_layer.index == project.current_layer:
-		project.selected_cels = []
-		project.change_cel(at_frame, pose_layer.index)
+	await RenderingServer.frame_post_draw
+	global.canvas.queue_redraw()
