@@ -1,7 +1,7 @@
 # Skeletor
 <div align=center>
   
-[![Thumbnail](https://github.com/user-attachments/assets/3f5ec294-600e-4cd4-9049-7c0124801662)](https://youtu.be/RqCqg34G6Zg)
+[![Thumbnail](https://github.com/user-attachments/assets/3f5ec294-600e-4cd4-9049-7c0124801662)](https://youtu.be/Skq6TTTPtLg)
 
 </div>
 
