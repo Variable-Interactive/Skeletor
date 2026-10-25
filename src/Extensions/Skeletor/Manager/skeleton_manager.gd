@@ -357,6 +357,7 @@ func generate_pose(for_frame: int = current_frame, save_bones_before_render := t
 		# Only incude layers if they're visible.
 		var include := true if layer.visible else false
 		var cel_image: Image = layer.display_effects(cel)
+		var bone_applied := false
 
 		# Apply transformations to the image if it's a child of group layer
 		if is_instance_valid(group_layer):
@@ -365,7 +366,14 @@ func generate_pose(for_frame: int = current_frame, save_bones_before_render := t
 				bone_set = load_frame_bones(project, for_frame)
 			var bone: SkeletonBone = bone_set.get(group_layer.name, null)
 			if bone:
-				_apply_bone(bone, cel_image)
+				bone_applied = _apply_bone(
+					bone,
+					cel_image,
+					project.size if layer.use_cel_image_for_effects else Vector2i.ZERO,
+					cel.offset if layer.use_cel_image_for_effects else Vector2i.ZERO
+				)
+		if not bone_applied and layer.use_cel_image_for_effects:
+			cel_image.copy_from(project.crop_image_to_project_size(cel_image, cel.offset))
 		textures.append(cel_image)
 		_set_layer_metadata_image(layer, cel, metadata_image, ordered_index, include)
 
@@ -462,8 +470,8 @@ func get_best_origin(layer_idx: int) -> Vector2i:
 func manage_ui_signals(is_disconnecting := false) -> void:
 	api.signals.signal_cel_switched(_on_cel_switched, is_disconnecting)
 	api.signals.signal_project_data_changed(_on_project_data_changed, is_disconnecting)
-	api.signals.signal_current_cel_texture_changed(
-		_on_pixel_layers_texture_changed, is_disconnecting
+	api.signals.current_cel_signal(
+		_on_pixel_layers_texture_changed, "texture_changed", is_disconnecting
 	)
 	var layer_vbox: VBoxContainer = global.get("layer_vbox")
 	if !layer_vbox:  # The variable to layer_vbox got moved in 1.1.7
@@ -755,15 +763,20 @@ func load_frame_bones(
 
 
 ## Applies the transformations done by bone_name to the given cel_image
-func _apply_bone(bone: SkeletonBone, cel_image: Image) -> void:
+func _apply_bone(
+	bone: SkeletonBone,
+	cel_image: Image,
+	override_size := Vector2i.ZERO,
+	override_offset := Vector2i.ZERO
+) -> bool:
 	var used_region := cel_image.get_used_rect()
 	var start_point: Vector2i = bone.start_point
 	var gizmo_origin := bone.gizmo_origin
 	var angle: float = bone.bone_rotation
 	if angle == 0 and start_point == Vector2i.ZERO:
-		return
+		return false
 	if used_region.size == Vector2i.ZERO:
-		return
+		return false
 
 	# Imprint on a square for rotation
 	# (We are doing this so that the image doesn't get clipped as a result of rotation.)
@@ -833,24 +846,35 @@ func _apply_bone(bone: SkeletonBone, cel_image: Image) -> void:
 			"shader": rotation_generator.cache_shader,
 			"rid": rotation_generator.cache_mat_rid
 			}
-	var pivot: Vector2i = gizmo_origin
+	var pivot: Vector2i = gizmo_origin - Vector2(override_offset)
 	var bone_start_global: Vector2i = pivot + start_point
 	var square_image_start: Vector2i = used_region.position - s_offset
 	var global_square_centre: Vector2 = square_image_start + (square_image.get_size() / 2)
 	var global_rotated_new_centre = (
 		(global_square_centre - Vector2(pivot)).rotated(angle)
-		+ Vector2(bone_start_global)
+		+ Vector2(bone_start_global + override_offset)
 	)
 	var new_start: Vector2i = (
 		square_image_start
 		+ Vector2i((global_rotated_new_centre - global_square_centre).floor())
 	)
-	cel_image.fill(Color(0, 0, 0, 0))
+	if override_size:
+		cel_image.copy_from(
+			Image.create_empty(
+				override_size.x,
+				override_size.y,
+				cel_image.has_mipmaps(),
+				cel_image.get_format()
+			)
+		)
+	else:
+		cel_image.fill(Color(0, 0, 0, 0))
 	cel_image.blit_rect(
 		square_image,
 		Rect2i(Vector2.ZERO, square_image.get_size()),
 		Vector2i(new_start)
 	)
+	return true
 
 
 ## [param image] is an Nx4 texture, where N is the number of layers and the first row
@@ -883,10 +907,14 @@ func _set_layer_metadata_image(
 func _render_image(image: Image, at_frame: int = current_frame) -> void:
 	var project = api.project.current_project
 	var pixel_cel = project.frames[at_frame].cels[pose_layer.index]
-	var cel_image: Image = pixel_cel.get_image()
 	if pixel_cel.get_class_name() != "PixelCel":  # Failsafe
 		return
-	cel_image.blit_rect(image, Rect2i(Vector2.ZERO, image.get_size()), Vector2.ZERO)
-	pixel_cel.image_changed(cel_image)
+	var cel_image: Image = pixel_cel.get_image()
+	if cel_image.get_size() != image.get_size():
+		pixel_cel.set_content([image, Vector2i.ZERO])
+	else:
+		cel_image.blit_rect(image, Rect2i(Vector2.ZERO, image.get_size()), Vector2.ZERO)
+		pixel_cel.offset = Vector2i.ZERO
+		pixel_cel.image_changed(cel_image)
 	await RenderingServer.frame_post_draw
 	global.canvas.queue_redraw()

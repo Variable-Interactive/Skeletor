@@ -2,8 +2,6 @@ extends VBoxContainer
 
 enum IKEnum { FABRIK, CCDIK }
 
-var COLLAPSIBLE_CONTAINER = load("res://src/UI/Nodes/CollapsibleContainer.gd")
-
 var api: Node
 var tool_slot
 var kname: String
@@ -45,7 +43,7 @@ var _error_margin_slider: TextureProgressBar
 @onready var position_reset_menu: MenuButton = %PositionReset
 @onready var tween_skeleton_menu: MenuButton = %TweenSkeleton
 @onready var ik_options: VBoxContainer = %IKOptions
-@onready var bone_props: VBoxContainer = %BoneProps
+@onready var bone_props: FoldableContainer = %BoneProps
 @onready var adders: HBoxContainer = %Adders
 @onready var sliders_container: VBoxContainer = %SlidersContainer
 @onready var pose_visibility_alert: RichTextLabel = %PoseVisibilityAlert
@@ -55,10 +53,10 @@ var _error_margin_slider: TextureProgressBar
 @onready var options_container: VBoxContainer = %OptionsContainer
 @onready var skeleton_creator: VBoxContainer = %SkeletonCreator
 @onready var tool_options: VBoxContainer = %ToolOptions
-@onready var ik_section: VBoxContainer = %IKSection
-@onready var skeleton_section: VBoxContainer = %SkeletonSection
-@onready var utilities_section: VBoxContainer = %UtilitiesSection
-@onready var reset_section: VBoxContainer = %ResetSection
+@onready var ik_section: FoldableContainer = %IKSection
+@onready var skeleton_section: FoldableContainer = %SkeletonSection
+@onready var utilities_section: FoldableContainer = %UtilitiesSection
+@onready var reset_section: FoldableContainer = %ResetSection
 
 
 func _ready() -> void:
@@ -140,31 +138,21 @@ func _ready() -> void:
 		ik_options.add_child(_error_margin_slider)
 
 		# Add Collapsible Containers
-		skeleton_section.set_script(COLLAPSIBLE_CONTAINER)
-		skeleton_section.text = "Skeleton"
-		skeleton_section.set_visible_children(false)
-		skeleton_section.call("_ready")
+		skeleton_section.title = "Skeleton"
+		skeleton_section.folded = true
 
-		bone_props.set_script(COLLAPSIBLE_CONTAINER)
-		bone_props.set_visible_children(false)
-		bone_props.call("_ready")
+		bone_props.folded = true
 		bone_props.visible = false
 		adders.visible = bone_props.visible
 
-		utilities_section.set_script(COLLAPSIBLE_CONTAINER)
-		utilities_section.text = "Utilities"
-		utilities_section.set_visible_children(false)
-		utilities_section.call("_ready")
+		utilities_section.title = "Utilities"
+		utilities_section.folded = true
 
-		reset_section.set_script(COLLAPSIBLE_CONTAINER)
-		reset_section.text = "Reset"
-		reset_section.set_visible_children(false)
-		reset_section.call("_ready")
+		reset_section.title = "Reset"
+		reset_section.folded = true
 
-		ik_section.set_script(COLLAPSIBLE_CONTAINER)
-		ik_section.text = "Inverse Kinematics"
-		ik_section.set_visible_children(false)
-		ik_section.call("_ready")
+		ik_section.title = "Inverse Kinematics"
+		ik_section.folded = true
 
 		# Connect signals for Sliders
 		_chain_size_slider.value_changed.connect(_on_chain_size_value_changed)
@@ -937,7 +925,7 @@ func display_props():
 	):
 		%BoneInfo.visible = false
 		bone_props.visible = true
-		bone_props.text = tr("Bone:") + " " + bone_manager.selected_gizmo.bone_name
+		bone_props.title = tr("Bone:") + " " + bone_manager.selected_gizmo.bone_name
 		_rot_slider.value = rad_to_deg(bone_manager.selected_gizmo.bone_rotation)
 		_pos_slider.value = bone_manager.selected_gizmo.rel_to_canvas(
 			bone_manager.selected_gizmo.start_point

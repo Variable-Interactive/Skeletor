@@ -1,33 +1,60 @@
-[gd_scene load_steps=4 format=3 uid="uid://dmm1oev1lo72t"]
+[gd_scene format=3 uid="uid://dmm1oev1lo72t"]
 
 [ext_resource type="Script" uid="uid://b3csbf4ntlddk" path="res://src/Extensions/Skeletor/Tool/skeleton_tool.gd" id="1_wwq80"]
 [ext_resource type="Texture2D" uid="uid://crxooqv6qh5md" path="res://src/Extensions/Skeletor/Graphics/add_texture.png" id="2_66q0l"]
 [ext_resource type="Texture2D" uid="uid://cocpa2yrd0nb" path="res://src/Extensions/Skeletor/Graphics/new_bone.png" id="2_kpe34"]
 
-[node name="SkeletonTool" type="VBoxContainer"]
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_jje82"]
+content_margin_left = 4.0
+content_margin_top = 4.0
+content_margin_right = 4.0
+content_margin_bottom = 4.0
+bg_color = Color(1, 1, 1, 0.75)
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+corner_detail = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_73mli"]
+content_margin_left = 4.0
+content_margin_top = 4.0
+content_margin_right = 4.0
+content_margin_bottom = 4.0
+bg_color = Color(0.101960786, 0.101960786, 0.101960786, 0.13725491)
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+corner_detail = 5
+
+[node name="SkeletonTool" type="VBoxContainer" unique_id=152993867]
 offset_right = 177.0
 offset_bottom = 233.0
 script = ExtResource("1_wwq80")
 
-[node name="ColorRect" type="ColorRect" parent="."]
+[node name="ColorRect" type="ColorRect" parent="." unique_id=585225693]
 custom_minimum_size = Vector2(0, 4)
 layout_mode = 2
 
-[node name="Label" type="Label" parent="."]
+[node name="Label" type="Label" parent="." unique_id=1725635655]
 layout_mode = 2
 theme_type_variation = &"HeaderSmall"
 text = "Tool Name"
 horizontal_alignment = 1
 
-[node name="PoseLayerCreator" type="VBoxContainer" parent="."]
+[node name="PoseLayerCreator" type="VBoxContainer" parent="." unique_id=121276740]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="PanelContainer" type="PanelContainer" parent="PoseLayerCreator"]
+[node name="PanelContainer" type="PanelContainer" parent="PoseLayerCreator" unique_id=199182419]
 layout_mode = 2
 
-[node name="NoPoseWarn" type="RichTextLabel" parent="PoseLayerCreator/PanelContainer"]
+[node name="NoPoseWarn" type="RichTextLabel" parent="PoseLayerCreator/PanelContainer" unique_id=1516962212]
 layout_mode = 2
 size_flags_vertical = 3
 bbcode_enabled = true
@@ -37,19 +64,19 @@ fit_content = true
 scroll_active = false
 horizontal_alignment = 1
 
-[node name="CreatePoseLayer" type="Button" parent="PoseLayerCreator"]
+[node name="CreatePoseLayer" type="Button" parent="PoseLayerCreator" unique_id=1087371105]
 layout_mode = 2
 text = "Create one"
 
-[node name="PoseLayerSelector" type="VBoxContainer" parent="."]
+[node name="PoseLayerSelector" type="VBoxContainer" parent="." unique_id=637394239]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="PanelContainer" type="PanelContainer" parent="PoseLayerSelector"]
+[node name="PanelContainer" type="PanelContainer" parent="PoseLayerSelector" unique_id=952930503]
 layout_mode = 2
 
-[node name="RichTextLabel" type="RichTextLabel" parent="PoseLayerSelector/PanelContainer"]
+[node name="RichTextLabel" type="RichTextLabel" parent="PoseLayerSelector/PanelContainer" unique_id=1048192212]
 layout_mode = 2
 size_flags_vertical = 3
 bbcode_enabled = true
@@ -59,23 +86,23 @@ fit_content = true
 scroll_active = false
 horizontal_alignment = 1
 
-[node name="SelectPoseLayer" type="Button" parent="PoseLayerSelector"]
+[node name="SelectPoseLayer" type="Button" parent="PoseLayerSelector" unique_id=723086221]
 layout_mode = 2
 text = "Select Pose Layer"
 
-[node name="OptionsContainer" type="VBoxContainer" parent="."]
+[node name="OptionsContainer" type="VBoxContainer" parent="." unique_id=252819836]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="SkeletonCreator" type="VBoxContainer" parent="OptionsContainer"]
+[node name="SkeletonCreator" type="VBoxContainer" parent="OptionsContainer" unique_id=992442721]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="PanelContainer" type="PanelContainer" parent="OptionsContainer/SkeletonCreator"]
+[node name="PanelContainer" type="PanelContainer" parent="OptionsContainer/SkeletonCreator" unique_id=1317800926]
 layout_mode = 2
 
-[node name="RichTextLabel" type="RichTextLabel" parent="OptionsContainer/SkeletonCreator/PanelContainer"]
+[node name="RichTextLabel" type="RichTextLabel" parent="OptionsContainer/SkeletonCreator/PanelContainer" unique_id=372496970]
 layout_mode = 2
 size_flags_vertical = 3
 bbcode_enabled = true
@@ -85,15 +112,15 @@ fit_content = true
 scroll_active = false
 horizontal_alignment = 1
 
-[node name="CreateBone" type="Button" parent="OptionsContainer/SkeletonCreator"]
+[node name="CreateBone" type="Button" parent="OptionsContainer/SkeletonCreator" unique_id=2134777895]
 layout_mode = 2
 text = "Create Group"
 
-[node name="ToolOptions" type="VBoxContainer" parent="OptionsContainer"]
+[node name="ToolOptions" type="VBoxContainer" parent="OptionsContainer" unique_id=480126779]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="PoseVisibilityAlert" type="RichTextLabel" parent="OptionsContainer/ToolOptions"]
+[node name="PoseVisibilityAlert" type="RichTextLabel" parent="OptionsContainer/ToolOptions" unique_id=2030128826]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
@@ -103,17 +130,17 @@ Pose Layer is inside a Group layer! Pose will not be visible!!"
 fit_content = true
 horizontal_alignment = 1
 
-[node name="Adders" type="HBoxContainer" parent="OptionsContainer/ToolOptions"]
+[node name="Adders" type="HBoxContainer" parent="OptionsContainer/ToolOptions" unique_id=401785386]
 unique_name_in_owner = true
 layout_mode = 2
 alignment = 2
 
-[node name="AddBone" type="Button" parent="OptionsContainer/ToolOptions/Adders"]
+[node name="AddBone" type="Button" parent="OptionsContainer/ToolOptions/Adders" unique_id=1677708264]
 custom_minimum_size = Vector2(25, 25)
 layout_mode = 2
 tooltip_text = "Add new bone as a child to this bone."
 
-[node name="TextureRect" type="TextureRect" parent="OptionsContainer/ToolOptions/Adders/AddBone"]
+[node name="TextureRect" type="TextureRect" parent="OptionsContainer/ToolOptions/Adders/AddBone" unique_id=563817897]
 texture_filter = 1
 layout_mode = 1
 anchors_preset = 15
@@ -128,12 +155,12 @@ grow_vertical = 2
 texture = ExtResource("2_kpe34")
 expand_mode = 1
 
-[node name="AddTexture" type="Button" parent="OptionsContainer/ToolOptions/Adders"]
+[node name="AddTexture" type="Button" parent="OptionsContainer/ToolOptions/Adders" unique_id=484480030]
 custom_minimum_size = Vector2(25, 25)
 layout_mode = 2
 tooltip_text = "Edit bone texture"
 
-[node name="TextureRect" type="TextureRect" parent="OptionsContainer/ToolOptions/Adders/AddTexture"]
+[node name="TextureRect" type="TextureRect" parent="OptionsContainer/ToolOptions/Adders/AddTexture" unique_id=1084885661]
 texture_filter = 1
 layout_mode = 1
 anchors_preset = 15
@@ -148,21 +175,21 @@ grow_vertical = 2
 texture = ExtResource("2_66q0l")
 expand_mode = 1
 
-[node name="Section3" type="HBoxContainer" parent="OptionsContainer/ToolOptions"]
+[node name="Section3" type="HBoxContainer" parent="OptionsContainer/ToolOptions" unique_id=701290355]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="OptionsContainer/ToolOptions/Section3"]
+[node name="Label" type="Label" parent="OptionsContainer/ToolOptions/Section3" unique_id=1830220392]
 layout_mode = 2
 text = "General"
 
-[node name="HSeparator" type="HSeparator" parent="OptionsContainer/ToolOptions/Section3"]
+[node name="HSeparator" type="HSeparator" parent="OptionsContainer/ToolOptions/Section3" unique_id=980665288]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="GeneralProperties" type="VBoxContainer" parent="OptionsContainer/ToolOptions"]
+[node name="GeneralProperties" type="VBoxContainer" parent="OptionsContainer/ToolOptions" unique_id=362428789]
 layout_mode = 2
 
-[node name="LiveUpdateCheckbox" type="CheckBox" parent="OptionsContainer/ToolOptions/GeneralProperties"]
+[node name="LiveUpdateCheckbox" type="CheckBox" parent="OptionsContainer/ToolOptions/GeneralProperties" unique_id=1295692096]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "(Enabled) The update happens continuously
@@ -171,28 +198,31 @@ as the bone is modified
 (Disabled) The update only happens at the end of modification."
 text = "Live Update (slower)"
 
-[node name="SkeletonSection" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties"]
+[node name="SkeletonSection" type="FoldableContainer" parent="OptionsContainer/ToolOptions/GeneralProperties" unique_id=1965096205]
 unique_name_in_owner = true
 layout_mode = 2
+theme_override_styles/focus = SubResource("StyleBoxFlat_jje82")
+theme_override_styles/panel = SubResource("StyleBoxFlat_73mli")
+title = "Skeleton"
 
-[node name="HBoxContainer" type="HBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection"]
+[node name="HBoxContainer" type="HBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection" unique_id=1249286639]
 layout_mode = 2
 
-[node name="Spacer" type="Control" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer"]
+[node name="Spacer" type="Control" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer" unique_id=71154437]
 custom_minimum_size = Vector2(10, 0)
 layout_mode = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer" unique_id=1411792890]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="LockPoseCheckbox" type="CheckBox" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer"]
+[node name="LockPoseCheckbox" type="CheckBox" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer" unique_id=1928173863]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Prevents transformations to the bones when their gui is moved."
 text = "Lock Pose"
 
-[node name="IncludeChildrenCheckbox" type="CheckBox" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer"]
+[node name="IncludeChildrenCheckbox" type="CheckBox" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer" unique_id=1699458864]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Manipulations done through the buttons below
@@ -207,25 +237,30 @@ button_pressed = true
 text = "Apply actions to children"
 autowrap_mode = 3
 
-[node name="BoneOptionSection" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer"]
+[node name="BoneOptionSection" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer" unique_id=2134463367]
 layout_mode = 2
 
-[node name="BoneProps" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection"]
+[node name="BoneProps" type="FoldableContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection" unique_id=1300192784]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_styles/focus = SubResource("StyleBoxFlat_jje82")
+theme_override_styles/panel = SubResource("StyleBoxFlat_73mli")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps" unique_id=1622524613]
+layout_mode = 2
+
+[node name="RotationAlgorithm" type="OptionButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/VBoxContainer" unique_id=1328768960]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="RotationAlgorithm" type="OptionButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps"]
+[node name="SlidersContainer" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/VBoxContainer" unique_id=2036854703]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="SlidersContainer" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps"]
-unique_name_in_owner = true
+[node name="HSeparator" type="HSeparator" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/VBoxContainer" unique_id=830892968]
 layout_mode = 2
 
-[node name="HSeparator" type="HSeparator" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps"]
-layout_mode = 2
-
-[node name="BoneInfo" type="RichTextLabel" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection"]
+[node name="BoneInfo" type="RichTextLabel" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection" unique_id=695169546]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
@@ -233,29 +268,37 @@ bbcode_enabled = true
 text = "Select bone on canvas to view properties"
 fit_content = true
 scroll_active = false
+horizontal_alignment = 1
+vertical_alignment = 1
 
-[node name="UtilitiesSection" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer"]
+[node name="UtilitiesSection" type="FoldableContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer" unique_id=1083292519]
 unique_name_in_owner = true
 layout_mode = 2
+theme_override_styles/focus = SubResource("StyleBoxFlat_jje82")
+theme_override_styles/panel = SubResource("StyleBoxFlat_73mli")
+title = "Utilities"
 
-[node name="QuickSetBones" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection"]
+[node name="VBoxContainer" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection" unique_id=327040382]
+layout_mode = 2
+
+[node name="QuickSetBones" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/VBoxContainer" unique_id=605487715]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Quickly place bones over their respective sprites."
 text = "Quick Set Bones"
 flat = false
 
-[node name="CopyPoseFrom" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection"]
+[node name="CopyPoseFrom" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/VBoxContainer" unique_id=324606513]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Copies properties of selected bones from chosen frame to current frame."
 text = "Copy Pose From"
 flat = false
 
-[node name="HBoxContainer" type="HBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection"]
+[node name="HBoxContainer" type="HBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/VBoxContainer" unique_id=761534572]
 layout_mode = 2
 
-[node name="TweenSkeleton" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/HBoxContainer"]
+[node name="TweenSkeleton" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/VBoxContainer/HBoxContainer" unique_id=1224551087]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -263,79 +306,88 @@ tooltip_text = "Gererates In-Betweens from a chosen start frame to the current f
 text = "Tween Skeleton"
 flat = false
 
-[node name="Warn" type="Button" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/HBoxContainer"]
+[node name="Warn" type="Button" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/VBoxContainer/HBoxContainer" unique_id=880598423]
 layout_mode = 2
 text = "[ ! ]"
 flat = true
 
-[node name="ForceRefreshPose" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection"]
+[node name="ForceRefreshPose" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/VBoxContainer" unique_id=715079602]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Force re-generates the pose of chosen frames"
 text = "Force Refresh Pose"
 flat = false
 
-[node name="ResetSection" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer"]
+[node name="ResetSection" type="FoldableContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer" unique_id=1553895626]
 unique_name_in_owner = true
 layout_mode = 2
+theme_override_styles/focus = SubResource("StyleBoxFlat_jje82")
+theme_override_styles/panel = SubResource("StyleBoxFlat_73mli")
+title = "Reset"
 
-[node name="RotationReset" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/ResetSection"]
+[node name="VBoxContainer" type="VBoxContainer" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/ResetSection" unique_id=1025668103]
+layout_mode = 2
+
+[node name="RotationReset" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/ResetSection/VBoxContainer" unique_id=505969052]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Resets the rotation of selected bones"
 text = "Bone Rotation"
 flat = false
 
-[node name="PositionReset" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/ResetSection"]
+[node name="PositionReset" type="MenuButton" parent="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/ResetSection/VBoxContainer" unique_id=748611340]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Resets the position of selected bones"
 text = "Bone Position"
 flat = false
 
-[node name="AllowChaining" type="CheckBox" parent="OptionsContainer/ToolOptions/GeneralProperties"]
+[node name="AllowChaining" type="CheckBox" parent="OptionsContainer/ToolOptions/GeneralProperties" unique_id=1746512487]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "When enabled, it will be possible to displace bone and
 rotate it's parent at the same time (like a chain)."
 text = "Allow Chaining"
 
-[node name="InverseKinematics" type="CheckBox" parent="OptionsContainer/ToolOptions/GeneralProperties"]
+[node name="InverseKinematics" type="CheckBox" parent="OptionsContainer/ToolOptions/GeneralProperties" unique_id=1937035516]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Inverse Kinematics"
 
-[node name="IKSection" type="VBoxContainer" parent="OptionsContainer/ToolOptions"]
+[node name="IKSection" type="FoldableContainer" parent="OptionsContainer/ToolOptions" unique_id=1057828826]
 unique_name_in_owner = true
 layout_mode = 2
+theme_override_styles/focus = SubResource("StyleBoxFlat_jje82")
+theme_override_styles/panel = SubResource("StyleBoxFlat_73mli")
+title = "Inverse Kinematics"
 
-[node name="HBoxContainer" type="HBoxContainer" parent="OptionsContainer/ToolOptions/IKSection"]
+[node name="HBoxContainer" type="HBoxContainer" parent="OptionsContainer/ToolOptions/IKSection" unique_id=575086191]
 layout_mode = 2
 
-[node name="Spacer" type="Control" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer"]
+[node name="Spacer" type="Control" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer" unique_id=588897685]
 custom_minimum_size = Vector2(10, 0)
 layout_mode = 2
 
-[node name="IKOptions" type="VBoxContainer" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer"]
+[node name="IKOptions" type="VBoxContainer" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer" unique_id=1445712971]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="LockRootBoneCheckbox" type="CheckBox" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions"]
+[node name="LockRootBoneCheckbox" type="CheckBox" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions" unique_id=1350315591]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "If enabled, position of the chain's root bone stays fixed"
 button_pressed = true
 text = "Lock root bone"
 
-[node name="HBoxContainer" type="HBoxContainer" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions"]
+[node name="HBoxContainer" type="HBoxContainer" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions" unique_id=489184507]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions/HBoxContainer"]
+[node name="Label" type="Label" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions/HBoxContainer" unique_id=784103312]
 layout_mode = 2
 text = "Algorithm:"
 
-[node name="AlgorithmOption" type="OptionButton" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions/HBoxContainer"]
+[node name="AlgorithmOption" type="OptionButton" parent="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions/HBoxContainer" unique_id=1822774881]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -347,16 +399,16 @@ popup/item_0/id = 0
 popup/item_1/text = "CCDIK"
 popup/item_1/id = 1
 
-[node name="LockPoseFixer" type="VBoxContainer" parent="OptionsContainer"]
+[node name="LockPoseFixer" type="VBoxContainer" parent="OptionsContainer" unique_id=763954016]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="PanelContainer" type="PanelContainer" parent="OptionsContainer/LockPoseFixer"]
+[node name="PanelContainer" type="PanelContainer" parent="OptionsContainer/LockPoseFixer" unique_id=660056550]
 layout_mode = 2
 
-[node name="RichTextLabel" type="RichTextLabel" parent="OptionsContainer/LockPoseFixer/PanelContainer"]
+[node name="RichTextLabel" type="RichTextLabel" parent="OptionsContainer/LockPoseFixer/PanelContainer" unique_id=242717562]
 layout_mode = 2
 size_flags_vertical = 3
 bbcode_enabled = true
@@ -366,7 +418,7 @@ fit_content = true
 scroll_active = false
 horizontal_alignment = 1
 
-[node name="LockPoseQuickAccess" type="Button" parent="OptionsContainer/LockPoseFixer"]
+[node name="LockPoseQuickAccess" type="Button" parent="OptionsContainer/LockPoseFixer" unique_id=442057120]
 layout_mode = 2
 text = "Turn off"
 
@@ -378,14 +430,14 @@ text = "Turn off"
 [connection signal="toggled" from="OptionsContainer/ToolOptions/GeneralProperties/LiveUpdateCheckbox" to="." method="_on_live_update_pressed"]
 [connection signal="toggled" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/LockPoseCheckbox" to="." method="_on_lock_pose_checkbox_toggled"]
 [connection signal="toggled" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/IncludeChildrenCheckbox" to="." method="_on_include_children_checkbox_toggled"]
-[connection signal="item_selected" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/RotationAlgorithm" to="." method="_on_rotation_algorithm_item_selected"]
-[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/QuickSetBones" to="." method="_on_quick_set_bones_menu_about_to_popup"]
-[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/CopyPoseFrom" to="." method="_on_copy_pose_from_about_to_popup"]
-[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/HBoxContainer/TweenSkeleton" to="." method="_on_tween_skeleton_about_to_popup"]
-[connection signal="pressed" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/HBoxContainer/Warn" to="." method="_on_warn_pressed"]
-[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/ForceRefreshPose" to="." method="_on_force_refresh_pose_about_to_popup"]
-[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/ResetSection/RotationReset" to="." method="_on_rotation_reset_menu_about_to_popup"]
-[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/ResetSection/PositionReset" to="." method="_on_position_reset_menu_about_to_popup"]
+[connection signal="item_selected" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/BoneOptionSection/BoneProps/VBoxContainer/RotationAlgorithm" to="." method="_on_rotation_algorithm_item_selected"]
+[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/VBoxContainer/QuickSetBones" to="." method="_on_quick_set_bones_menu_about_to_popup"]
+[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/VBoxContainer/CopyPoseFrom" to="." method="_on_copy_pose_from_about_to_popup"]
+[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/VBoxContainer/HBoxContainer/TweenSkeleton" to="." method="_on_tween_skeleton_about_to_popup"]
+[connection signal="pressed" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/VBoxContainer/HBoxContainer/Warn" to="." method="_on_warn_pressed"]
+[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/UtilitiesSection/VBoxContainer/ForceRefreshPose" to="." method="_on_force_refresh_pose_about_to_popup"]
+[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/ResetSection/VBoxContainer/RotationReset" to="." method="_on_rotation_reset_menu_about_to_popup"]
+[connection signal="about_to_popup" from="OptionsContainer/ToolOptions/GeneralProperties/SkeletonSection/HBoxContainer/VBoxContainer/ResetSection/VBoxContainer/PositionReset" to="." method="_on_position_reset_menu_about_to_popup"]
 [connection signal="toggled" from="OptionsContainer/ToolOptions/GeneralProperties/AllowChaining" to="." method="_on_allow_chaining_toggled"]
 [connection signal="toggled" from="OptionsContainer/ToolOptions/GeneralProperties/InverseKinematics" to="." method="_on_inverse_kinematics_toggled"]
 [connection signal="toggled" from="OptionsContainer/ToolOptions/IKSection/HBoxContainer/IKOptions/LockRootBoneCheckbox" to="." method="_on_lock_root_bone_checkbox_toggled"]
